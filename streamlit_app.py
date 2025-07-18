@@ -115,18 +115,45 @@ def calculate_efficiency(df, q_col, h_col, k_col, q_unit='L/min'):
     df_copy['Efficiency'] = efficiency
     return df_copy
 
+# 디버깅 코드가 추가된 load_sheet 함수
 def load_sheet(name):
-    try: df = pd.read_excel(uploaded_file, sheet_name=name)
-    except Exception: return None, None, None, None, pd.DataFrame()
-    mcol, qcol, hcol, kcol = get_best_match_column(df, ["모델명"]), get_best_match_column(df, ["유량"]), get_best_match_column(df, ["양정"]), get_best_match_column(df, ["동력"])
-    if not mcol or not qcol or not hcol: return None, None, None, None, pd.DataFrame()
-    cols_to_check = [qcol, hcol]; 
-    if kcol: cols_to_check.append(kcol)
+    try:
+        df = pd.read_excel(uploaded_file, sheet_name=name)
+        # --- 디버깅 코드 시작 ---
+        st.subheader(f"'{name}' 시트 정보")
+        st.write("파일에서 읽어들인 원본 컬럼명:", df.columns.tolist())
+        # --- 디버깅 코드 끝 ---
+    except Exception as e:
+        st.error(f"'{name}' 시트를 읽는 중 에러 발생: {e}")
+        return None, None, None, None, pd.DataFrame()
+
+    mcol = get_best_match_column(df, ["모델명","모델","Model"])
+    qcol = get_best_match_column(df, ["토출량","유량"])
+    hcol = get_best_match_column(df, ["토출양정","전양정"])
+    kcol = get_best_match_column(df, ["축동력"])
+
+    # --- 디버깅 코드 시작 ---
+    st.write(f"매칭된 컬럼: 모델='{mcol}', 유량='{qcol}', 양정='{hcol}', 동력='{kcol}'")
+    # --- 디버깅 코드 끝 ---
+
+    if not mcol or not qcol or not hcol:
+        st.warning(f"'{name}' 시트에서 필수 컬럼(모델, 유량, 양정)을 찾지 못했습니다. 컬럼명을 확인해주세요.")
+        return None, None, None, None, pd.DataFrame()
+
+    # (이하 기존 코드와 동일)
+    cols_to_check = [qcol, hcol]
+    if kcol:
+        cols_to_check.append(kcol)
+
     for col in cols_to_check:
         df = df.dropna(subset=[col])
         df = df[pd.to_numeric(df[col], errors='coerce').notna()]
         df[col] = pd.to_numeric(df[col])
-    df['Series'] = df[mcol].astype(str).str.extract(r"(XRF\d+)"); df['Series'] = pd.Categorical(df['Series'], categories=SERIES_ORDER, ordered=True); df = df.sort_values('Series')
+
+    df['Series'] = df[mcol].astype(str).str.extract(r"(XRF\d+)")
+    df['Series'] = pd.Categorical(df['Series'], categories=SERIES_ORDER, ordered=True)
+    df = df.sort_values('Series')
+
     df = calculate_efficiency(df, qcol, hcol, kcol, q_unit='L/min')
     return mcol, qcol, hcol, kcol, df
 
