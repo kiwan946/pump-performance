@@ -1,7 +1,4 @@
 streamlit
 pandas
 numpy
-matplotlib
-scipy
-openpyxl
 plotly.graph_objs
