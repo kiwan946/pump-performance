@@ -4,8 +4,8 @@ import plotly.graph_objs as go
 import numpy as np
 
 # 페이지 기본 설정
-st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v3.4", layout="wide")
-st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v3.4")
+st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v3.5", layout="wide")
+st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v3.5")
 
 # --- 유틸리티 함수들 ---
 
@@ -114,13 +114,11 @@ def analyze_fire_pump_point(df, models, target_q, target_h, m_col, q_col, h_col,
 
         # 2. 체절 운전점 (Churn/Shut-off) 확인: 체절 양정이 목표 양정의 140% 이하인가?
         h_churn = model_df.iloc[0][h_col]
-        # ★★★ 수정된 부분: 기준을 interp_h_rated -> target_h 로 변경 ★★★
         cond1_ok = h_churn <= (1.40 * target_h)
 
         # 3. 최대 운전점 (Overload) 확인: 150% 유량에서 양정이 목표 양정의 65% 이상인가?
         q_overload = 1.5 * target_q
         interp_h_overload = np.interp(q_overload, model_df[q_col], model_df[h_col], left=np.nan, right=np.nan)
-        # ★★★ 수정된 부분: 기준을 interp_h_rated -> target_h 로 변경 ★★★
         cond2_ok = (not np.isnan(interp_h_overload)) and (interp_h_overload >= (0.65 * target_h))
 
         if cond1_ok and cond2_ok:
@@ -134,7 +132,6 @@ def analyze_fire_pump_point(df, models, target_q, target_h, m_col, q_col, h_col,
     return pd.DataFrame(results)
 
 # --- UI 및 시각화 함수들 ---
-# (이하 UI 및 시각화 함수들은 이전과 동일하여 생략)
 def render_filters(df, mcol, prefix):
     series_opts = df['Series'].dropna().unique().tolist()
     default_series = [series_opts[0]] if series_opts else []
@@ -231,7 +228,32 @@ if uploaded_file:
             if ref_show and not df_f.empty: add_traces(fig_h, df_f, m_r, q_r, h_r, models, 'lines+markers'); add_bep_markers(fig_h, df_f, m_r, q_r, h_r, models)
             if cat_show and not df_c.empty: add_traces(fig_h, df_c, m_c, q_c, h_c, models, 'lines+markers', line_style=dict(dash='dot'))
             if dev_show and not df_d.empty: add_traces(fig_h, df_d, m_d, q_d, h_d, models, 'markers')
-            if target_q > 0: fig_h.add_trace(go.Scatter(x=[target_q], y=[target_h], mode='markers', marker=dict(symbol='cross', size=15, color='magenta'), name='운전점'))
+            
+            # ★★★ 수정된 부분: 운전점 마커 추가 로직 ★★★
+            if target_q > 0 and target_h > 0:
+                # 1. 주 운전점 (Rated Point)
+                fig_h.add_trace(go.Scatter(
+                    x=[target_q], y=[target_h], mode='markers',
+                    marker=dict(symbol='cross', size=15, color='magenta'), name='정격 운전점'
+                ))
+
+                # 2. 소방 모드일 경우 추가 지점 표시
+                if analysis_mode == "소방":
+                    # 체절 운전점 상한선 (Churn Point Limit)
+                    churn_h_limit = 1.4 * target_h
+                    fig_h.add_trace(go.Scatter(
+                        x=[0], y=[churn_h_limit], mode='markers',
+                        marker=dict(symbol='x', size=12, color='red'), name=f'체절점 상한 (H≤{churn_h_limit:.2f})'
+                    ))
+
+                    # 최대 운전점 하한선 (Overload Point Limit)
+                    overload_q = 1.5 * target_q
+                    overload_h_limit = 0.65 * target_h
+                    fig_h.add_trace(go.Scatter(
+                        x=[overload_q], y=[overload_h_limit], mode='markers',
+                        marker=dict(symbol='diamond-open', size=12, color='blue'), name=f'최대점 하한 (H≥{overload_h_limit:.2f})'
+                    ))
+
             render_chart(fig_h, key="total_qh")
 
             # Q-kW 곡선
@@ -242,8 +264,11 @@ if uploaded_file:
             if dev_show and not df_d.empty: add_traces(fig_k, df_d, m_d, q_d, k_d, models, 'markers')
             render_chart(fig_k, key="total_qk")
 
-    # 나머지 개별 탭들 (이하 로직은 단순화/생략)
-    # ...
+    # 나머지 개별 탭들 (이하 로직은 기능 확인을 위해 단순화)
+    for idx, sheet in enumerate(["reference data", "catalog data", "deviation data"]):
+        with tabs[idx+1]:
+            st.subheader(sheet.title())
+            # 필요한 경우 각 탭의 내용 구현
 
 else:
     st.info("시작하려면 Excel 파일을 업로드하세요.")
