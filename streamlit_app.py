@@ -4,8 +4,8 @@ import plotly.graph_objs as go
 import numpy as np
 
 # 페이지 기본 설정
-st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v3.9", layout="wide")
-st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v3.9")
+st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v4.0", layout="wide")
+st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v4.0")
 
 # --- 유틸리티 함수들 ---
 
@@ -37,23 +37,19 @@ def load_sheet(name):
         df = pd.read_excel(uploaded_file, sheet_name=name)
     except Exception:
         return None, None, None, None, None, pd.DataFrame()
-
     mcol = get_best_match_column(df, ["모델명", "모델", "Model"])
     qcol = get_best_match_column(df, ["토출량", "유량"])
     hcol_discharge = get_best_match_column(df, ["토출양정"])
     hcol_total = get_best_match_column(df, ["전양정"])
     kcol = get_best_match_column(df, ["축동력"])
-
     if not mcol or not qcol or not (hcol_discharge or hcol_total):
         return None, None, None, None, None, pd.DataFrame()
-
     cols_to_check = [qcol, kcol, hcol_discharge, hcol_total]
     for col in cols_to_check:
         if col and col in df.columns:
             df = df.dropna(subset=[col])
             df = df[pd.to_numeric(df[col], errors='coerce').notna()]
             df[col] = pd.to_numeric(df[col])
-
     df['Series'] = df[mcol].astype(str).str.extract(r"(XRF\d+)")
     df['Series'] = pd.Categorical(df['Series'], categories=SERIES_ORDER, ordered=True)
     df = df.sort_values('Series')
@@ -140,8 +136,8 @@ if uploaded_file:
     if not head_options:
         st.error("오류: 'reference data' 시트에서 '토출양정' 또는 '전양정' 컬럼을 찾을 수 없습니다.")
     else:
-        h_col_choice = st.sidebar.radio("효율 계산 기준 양정", options=head_options, key='head_choice')
-        st.sidebar.info(f"**'{h_col_choice}'** 기준으로 모든 효율 및 분석이 수행됩니다.")
+        h_col_choice = st.sidebar.radio("효율 계산 기준 양정 (Total 탭 적용)", options=head_options, key='head_choice')
+        st.sidebar.info(f"**'{h_col_choice}'** 기준으로 'Total' 탭의 효율 및 분석이 수행됩니다.")
 
         df_r = calculate_efficiency_user_formula(df_r_orig.copy(), q_r, h_col_choice, k_r)
         df_c = calculate_efficiency_user_formula(df_c_orig.copy(), q_c, h_col_choice, k_c)
@@ -187,30 +183,28 @@ if uploaded_file:
                 cat_show = st.checkbox("Catalog 표시")
                 dev_show = st.checkbox("Deviation 표시")
 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown(f"#### Q-H (유량-{h_col_choice})")
-                    fig_h = go.Figure()
-                    if ref_show and not df_f.empty: add_traces(fig_h, df_f, m_r, q_r, h_col_choice, models, 'lines+markers'); add_bep_markers(fig_h, df_f, m_r, q_r, h_col_choice, models)
-                    if cat_show and not df_c.empty: add_traces(fig_h, df_c, m_c, q_c, h_col_choice, models, 'lines+markers', line_style=dict(dash='dot'))
-                    if dev_show and not df_d.empty: add_traces(fig_h, df_d, m_d, q_d, h_col_choice, models, 'markers')
-                    if target_q > 0 and target_h > 0:
-                        fig_h.add_trace(go.Scatter(x=[target_q], y=[target_h], mode='markers', marker=dict(symbol='cross', size=15, color='magenta'), name='정격 운전점'))
-                        if analysis_mode == "소방":
-                            churn_h_limit = 1.4 * target_h
-                            fig_h.add_trace(go.Scatter(x=[0], y=[churn_h_limit], mode='markers', marker=dict(symbol='x', size=12, color='red'), name=f'체절점 상한'))
-                            overload_q = 1.5 * target_q
-                            overload_h_limit = 0.65 * target_h
-                            fig_h.add_trace(go.Scatter(x=[overload_q], y=[overload_h_limit], mode='markers', marker=dict(symbol='diamond-open', size=12, color='blue'), name=f'최대점 하한'))
-                    render_chart(fig_h, "total_qh")
+                # ★★★ 수정된 부분: Total 탭 차트 레이아웃 변경 ★★★
+                st.markdown(f"#### Q-H (유량-{h_col_choice})")
+                fig_h = go.Figure()
+                if ref_show and not df_f.empty: add_traces(fig_h, df_f, m_r, q_r, h_col_choice, models, 'lines+markers'); add_bep_markers(fig_h, df_f, m_r, q_r, h_col_choice, models)
+                if cat_show and not df_c.empty: add_traces(fig_h, df_c, m_c, q_c, h_col_choice, models, 'lines+markers', line_style=dict(dash='dot'))
+                if dev_show and not df_d.empty: add_traces(fig_h, df_d, m_d, q_d, h_col_choice, models, 'markers')
+                if target_q > 0 and target_h > 0:
+                    fig_h.add_trace(go.Scatter(x=[target_q], y=[target_h], mode='markers', marker=dict(symbol='cross', size=15, color='magenta'), name='정격 운전점'))
+                    if analysis_mode == "소방":
+                        churn_h_limit = 1.4 * target_h
+                        fig_h.add_trace(go.Scatter(x=[0], y=[churn_h_limit], mode='markers', marker=dict(symbol='x', size=12, color='red'), name=f'체절점 상한'))
+                        overload_q = 1.5 * target_q
+                        overload_h_limit = 0.65 * target_h
+                        fig_h.add_trace(go.Scatter(x=[overload_q], y=[overload_h_limit], mode='markers', marker=dict(symbol='diamond-open', size=12, color='blue'), name=f'최대점 하한'))
+                render_chart(fig_h, "total_qh")
 
-                with col2:
-                    st.markdown("#### Q-kW (유량-축동력)")
-                    fig_k = go.Figure()
-                    if ref_show and not df_f.empty: add_traces(fig_k, df_f, m_r, q_r, k_r, models, 'lines+markers')
-                    if cat_show and not df_c.empty: add_traces(fig_k, df_c, m_c, q_c, k_c, models, 'lines+markers', line_style=dict(dash='dot'))
-                    if dev_show and not df_d.empty: add_traces(fig_k, df_d, m_d, q_d, k_d, models, 'markers')
-                    render_chart(fig_k, "total_qk")
+                st.markdown("#### Q-kW (유량-축동력)")
+                fig_k = go.Figure()
+                if ref_show and not df_f.empty: add_traces(fig_k, df_f, m_r, q_r, k_r, models, 'lines+markers')
+                if cat_show and not df_c.empty: add_traces(fig_k, df_c, m_c, q_c, k_c, models, 'lines+markers', line_style=dict(dash='dot'))
+                if dev_show and not df_d.empty: add_traces(fig_k, df_d, m_d, q_d, k_d, models, 'markers')
+                render_chart(fig_k, "total_qk")
                 
                 st.markdown("#### Q-Efficiency (유량-효율)")
                 fig_e = go.Figure()
@@ -219,21 +213,28 @@ if uploaded_file:
                 if dev_show and not df_d.empty: add_traces(fig_e, df_d, m_d, q_d, 'Efficiency', models, 'markers')
                 render_chart(fig_e, "total_qe")
         
-        # ★★★ 개별 탭 기능 전체 복원 ★★★
+        # ★★★ 수정된 부분: 개별 탭 기능 전체 복원 및 수정 ★★★
         for idx, sheet_name in enumerate(["Reference", "Catalog", "Deviation"]):
             with tabs[idx+1]:
                 st.subheader(f"📊 {sheet_name} Data")
                 
-                df, mcol, qcol, hcol_d_sheet, hcol_t_sheet, kcol = (df_r_orig, m_r, q_r, h_r_d, h_r_t, k_r) if sheet_name == "Reference" else \
-                                                                    (df_c_orig, m_c, q_c, h_c_d, h_c_t, k_c) if sheet_name == "Catalog" else \
-                                                                    (df_d_orig, m_d, q_d, h_d_d, h_d_t, k_d)
+                # 원본 데이터프레임과 컬럼명 변수들 할당
+                if sheet_name == "Reference": df_orig, mcol, qcol, hcol_d_sheet, hcol_t_sheet, kcol = df_r_orig, m_r, q_r, h_r_d, h_r_t, k_r
+                elif sheet_name == "Catalog": df_orig, mcol, qcol, hcol_d_sheet, hcol_t_sheet, kcol = df_c_orig, m_c, q_c, h_c_d, h_c_t, k_c
+                else: df_orig, mcol, qcol, hcol_d_sheet, hcol_t_sheet, kcol = df_d_orig, m_d, q_d, h_d_d, h_d_t, k_d
 
-                # 선택된 양정 기준으로 효율 계산
-                df_tab = calculate_efficiency_user_formula(df.copy(), qcol, h_col_choice, kcol)
-
-                if df_tab.empty:
+                if df_orig.empty:
                     st.info(f"'{sheet_name.lower()} data' 시트의 데이터가 없거나 로드에 실패했습니다.")
                     continue
+                
+                # 각 탭의 양정 기준을 자체적으로 결정
+                h_col_for_tab = hcol_d_sheet if hcol_d_sheet else hcol_t_sheet
+                if not h_col_for_tab:
+                    st.warning("이 시트에는 양정 데이터가 없어 Q-H 및 효율 곡선을 표시할 수 없습니다.")
+                    continue
+                    
+                # 선택된 양정 기준으로 효율 계산
+                df_tab = calculate_efficiency_user_formula(df_orig.copy(), qcol, h_col_for_tab, kcol)
 
                 df_f_tab = render_filters(df_tab, mcol, sheet_name)
                 models_tab = df_f_tab[mcol].unique().tolist() if not df_f_tab.empty else []
@@ -244,10 +245,10 @@ if uploaded_file:
                 
                 mode, style = ('markers', None) if sheet_name == "Deviation" else ('lines+markers', dict(dash='dot') if sheet_name == "Catalog" else None)
 
-                st.markdown(f"#### Q-H ({h_col_choice})")
+                st.markdown(f"#### Q-H ({h_col_for_tab})")
                 fig1 = go.Figure()
-                add_traces(fig1, df_f_tab, mcol, qcol, h_col_choice, models_tab, mode, line_style=style)
-                add_bep_markers(fig1, df_f_tab, mcol, qcol, h_col_choice, models_tab)
+                add_traces(fig1, df_f_tab, mcol, qcol, h_col_for_tab, models_tab, mode, line_style=style)
+                # 개별 탭에서는 BEP 마커 삭제
                 render_chart(fig1, key=f"{sheet_name}_qh")
                 
                 if kcol:
@@ -260,7 +261,7 @@ if uploaded_file:
                     st.markdown("#### Q-Efficiency (효율)")
                     fig3 = go.Figure()
                     add_traces(fig3, df_f_tab, mcol, qcol, 'Efficiency', models_tab, mode, line_style=style)
-                    add_bep_markers(fig3, df_f_tab, mcol, qcol, 'Efficiency', models_tab)
+                    # 개별 탭에서는 BEP 마커 삭제
                     fig3.update_layout(yaxis_title="효율 (%)", yaxis=dict(range=[0, 100]))
                     render_chart(fig3, key=f"{sheet_name}_qe")
 
