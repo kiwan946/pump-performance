@@ -4,8 +4,8 @@ import plotly.graph_objs as go
 import numpy as np
 
 # 페이지 기본 설정
-st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v1.0", layout="wide")
-st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v1.0")
+st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v17.0", layout="wide")
+st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v17.0")
 
 # --- 유틸리티 함수들 ---
 SERIES_ORDER = ["XRF3", "XRF5", "XRF10", "XRF15", "XRF20", "XRF32", "XRF45", "XRF64", "XRF95", "XRF125", "XRF155", "XRF185", "XRF215", "XRF255"]
@@ -112,6 +112,14 @@ def add_bep_markers(fig, df, mcol, qcol, ycol, models):
             bep_row = model_df.loc[model_df['Efficiency'].idxmax()]
             fig.add_trace(go.Scatter(x=[bep_row[qcol]], y=[bep_row[ycol]], mode='markers', marker=dict(symbol='star', size=15, color='gold'), name=f'{m} BEP'))
 
+# ★★★ 추가된 부분: 보조선(가이드라인) 추가 함수 ★★★
+def add_guide_lines(fig, h_line, v_line):
+    """차트에 수평 및 수직 보조선을 추가합니다."""
+    if h_line is not None and h_line > 0:
+        fig.add_shape(type="line", x0=0, x1=1, xref="paper", y0=h_line, y1=h_line, yref="y", line=dict(color="gray", dash="dash"))
+    if v_line is not None and v_line > 0:
+        fig.add_shape(type="line", x0=v_line, x1=v_line, xref="x", y0=0, y1=1, yref="paper", line=dict(color="gray", dash="dash"))
+
 def render_chart(fig, key):
     fig.update_layout(dragmode='pan', xaxis=dict(fixedrange=False), yaxis=dict(fixedrange=False), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
     st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displaylogo': False}, key=key)
@@ -132,7 +140,7 @@ if uploaded_file:
         # 2. 사이드바 컬럼 선택 UI
         st.sidebar.title("⚙️ 분석 설정")
         st.sidebar.markdown("### 컬럼 지정")
-        st.sidebar.info("자동으로 설정된 컬럼을 확인하고, 필요시 직접 변경해주세요.")
+        st.sidebar.info("자동으로 추천된 컬럼을 확인하고, 필요시 직접 변경해주세요.")
         
         all_columns = df_r_orig.columns.tolist()
         def safe_get_index(items, value, default=0):
@@ -161,12 +169,13 @@ if uploaded_file:
             df_f = render_filters(df_r, m_r, "total")
             models = df_f[m_r].unique().tolist() if m_r and not df_f.empty else []
 
-            with st.expander("운전점 분석 (Operating Point Analysis)", expanded=True):
+            # ★★★ 수정된 부분: 운전점 분석을 기본적으로 접힌 상태로 변경 ★★★
+            with st.expander("운전점 분석 (Operating Point Analysis)"):
                 analysis_mode = st.radio("분석 모드", ["기계", "소방"], key="analysis_mode", horizontal=True)
                 op_col1, op_col2 = st.columns(2)
                 with op_col1: target_q = st.number_input("목표 유량 (Q)", value=0.0, format="%.2f")
                 with op_col2: target_h = st.number_input("목표 양정 (H)", value=0.0, format="%.2f")
-                if analysis_mode == "소방": st.info("선형보간법을 사용하여 소방 펌프 성능 기준 3점을 자동으로 분석합니다.")
+                if analysis_mode == "소방": st.info("소방 펌프 성능 기준 3점을 자동으로 분석합니다.")
                 if st.button("운전점 분석 실행"):
                     if not models: st.warning("먼저 분석할 시리즈나 모델을 선택해주세요.")
                     else:
@@ -175,6 +184,22 @@ if uploaded_file:
                             else: op_results_df = analyze_operating_point(df_r, models, target_q, target_h, m_r, q_col, h_col, k_col)
                             if not op_results_df.empty: st.success(f"총 {len(op_results_df)}개의 모델이 요구 성능을 만족합니다."); st.dataframe(op_results_df, use_container_width=True)
                             else: st.info("요구 성능을 만족하는 모델을 찾지 못했습니다.")
+
+            # ★★★ 추가된 부분: 보조선 기능 Expander ★★★
+            with st.expander("차트 보조선 추가"):
+                g_col1, g_col2, g_col3 = st.columns(3)
+                with g_col1:
+                    st.markdown("##### Q-H Chart")
+                    h_guide_h = st.number_input("수평선 (H축 값)", key="h_guide_h", value=0.0, format="%.2f")
+                    v_guide_h = st.number_input("수직선 (Q축 값)", key="v_guide_h", value=0.0, format="%.2f")
+                with g_col2:
+                    st.markdown("##### Q-kW Chart")
+                    h_guide_k = st.number_input("수평선 (kW축 값)", key="h_guide_k", value=0.0, format="%.2f")
+                    v_guide_k = st.number_input("수직선 (Q축 값)", key="v_guide_k", value=0.0, format="%.2f")
+                with g_col3:
+                    st.markdown("##### Q-Eff Chart")
+                    h_guide_e = st.number_input("수평선 (Eff축 값)", key="h_guide_e", value=0.0, format="%.2f")
+                    v_guide_e = st.number_input("수직선 (Q축 값)", key="v_guide_e", value=0.0, format="%.2f")
 
             st.markdown("---")
             ref_show = st.checkbox("Reference 표시", value=True)
@@ -186,7 +211,7 @@ if uploaded_file:
             if ref_show and not df_f.empty: add_traces(fig_h, df_f, m_r, q_col, h_col, models, 'lines+markers'); add_bep_markers(fig_h, df_f, m_r, q_col, h_col, models)
             if cat_show and not df_c.empty: add_traces(fig_h, df_c, m_c, q_col, h_col, models, 'lines+markers', line_style=dict(dash='dot'))
             if dev_show and not df_d.empty: add_traces(fig_h, df_d, m_d, q_col, h_col, models, 'markers')
-            if target_q > 0 and target_h > 0:
+            if 'target_q' in locals() and target_q > 0 and target_h > 0:
                 fig_h.add_trace(go.Scatter(x=[target_q], y=[target_h], mode='markers', marker=dict(symbol='cross', size=15, color='magenta'), name='정격 운전점'))
                 if analysis_mode == "소방":
                     churn_h_limit = 1.4 * target_h
@@ -194,6 +219,7 @@ if uploaded_file:
                     overload_q = 1.5 * target_q
                     overload_h_limit = 0.65 * target_h
                     fig_h.add_trace(go.Scatter(x=[overload_q], y=[overload_h_limit], mode='markers', marker=dict(symbol='diamond-open', size=12, color='blue'), name=f'최대점 하한'))
+            add_guide_lines(fig_h, h_guide_h, v_guide_h) # 보조선 추가
             render_chart(fig_h, "total_qh")
 
             st.markdown("#### Q-kW (유량-축동력)")
@@ -201,6 +227,7 @@ if uploaded_file:
             if ref_show and not df_f.empty: add_traces(fig_k, df_f, m_r, q_col, k_col, models, 'lines+markers')
             if cat_show and not df_c.empty: add_traces(fig_k, df_c, m_c, q_col, k_col, models, 'lines+markers', line_style=dict(dash='dot'))
             if dev_show and not df_d.empty: add_traces(fig_k, df_d, m_d, q_col, k_col, models, 'markers')
+            add_guide_lines(fig_k, h_guide_k, v_guide_k) # 보조선 추가
             render_chart(fig_k, "total_qk")
             
             st.markdown("#### Q-Efficiency (유량-효율)")
@@ -208,6 +235,7 @@ if uploaded_file:
             if ref_show and not df_f.empty: add_traces(fig_e, df_f, m_r, q_col, 'Efficiency', models, 'lines+markers'); add_bep_markers(fig_e, df_f, m_r, q_col, 'Efficiency', models)
             if cat_show and not df_c.empty: add_traces(fig_e, df_c, m_c, q_col, 'Efficiency', models, 'lines+markers', line_style=dict(dash='dot'))
             if dev_show and not df_d.empty: add_traces(fig_e, df_d, m_d, q_col, 'Efficiency', models, 'markers')
+            add_guide_lines(fig_e, h_guide_e, v_guide_e) # 보조선 추가
             render_chart(fig_e, "total_qe")
 
         for idx, sheet_name in enumerate(["Reference", "Catalog", "Deviation"]):
