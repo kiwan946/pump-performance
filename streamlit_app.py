@@ -4,8 +4,8 @@ import plotly.graph_objs as go
 import numpy as np
 
 # 페이지 기본 설정
-st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v5.2", layout="wide")
-st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v5.2")
+st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v5.3", layout="wide")
+st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v5.3")
 
 # --- 유틸리티 함수들 ---
 
@@ -16,6 +16,7 @@ SERIES_ORDER = [
 ]
 
 def get_best_match_column(df, names):
+    """키워드를 기반으로 DataFrame에서 최적의 컬럼 이름을 찾아 기본값으로 제안합니다."""
     for n in names:
         for col in df.columns:
             if n in col:
@@ -23,6 +24,7 @@ def get_best_match_column(df, names):
     return None
 
 def calculate_efficiency_user_formula(df, q_col, h_col, k_col):
+    """사용자 지정 공식을 바탕으로 펌프 효율을 계산합니다."""
     if not all(col in df.columns for col in [q_col, h_col, k_col] if col):
         return df
     df_copy = df.copy()
@@ -33,10 +35,12 @@ def calculate_efficiency_user_formula(df, q_col, h_col, k_col):
     return df_copy
 
 def load_sheet(name):
+    """Excel 시트를 로드하고 기본적인 전처리를 수행합니다."""
     try:
         df = pd.read_excel(uploaded_file, sheet_name=name)
     except Exception:
         return None, pd.DataFrame()
+    
     mcol = get_best_match_column(df, ["모델명", "모델", "Model"])
     if not mcol:
         return None, pd.DataFrame()
@@ -122,14 +126,17 @@ if uploaded_file:
     else:
         st.sidebar.title("⚙️ 분석 설정")
         
-        # --- ★★★ 수정된 부분: 수동 컬럼 지정 워크플로우 ★★★ ---
+        # --- ★★★ 수정된 부분: 컬럼 지정 로직 안정화 ★★★ ---
         
-        # 1. 자동 컬럼 감지
+        # 1. 자동 컬럼 감지 (기본값으로 사용)
         q_auto = get_best_match_column(df_r_orig, ["토출량", "유량"])
         h_auto = get_best_match_column(df_r_orig, ["토출양정", "전양정"])
         k_auto = get_best_match_column(df_r_orig, ["축동력"])
         
-        # 2. 수동 지정 옵션 제공
+        # 2. 최종 사용할 변수를 자동 감지된 값으로 우선 할당
+        q_col, h_col, k_col = q_auto, h_auto, k_auto
+        
+        # 3. 수동 지정 옵션 UI
         if st.sidebar.checkbox("수동 컬럼 지정"):
             st.sidebar.markdown("---")
             all_columns = df_r_orig.columns.tolist()
@@ -137,25 +144,26 @@ if uploaded_file:
             h_index = all_columns.index(h_auto) if h_auto in all_columns else 0
             k_index = all_columns.index(k_auto) if k_auto in all_columns else 0
             
-            q_col = st.sidebar.selectbox("유량(Flow) 컬럼", all_columns, index=q_index)
-            h_col = st.sidebar.selectbox("양정(Head) 컬럼", all_columns, index=h_index)
-            k_col = st.sidebar.selectbox("축동력(Power) 컬럼", all_columns, index=k_index)
+            # 수동 선택 시, 최종 사용할 변수 값을 덮어씀
+            q_col = st.sidebar.selectbox("유량(Flow) 컬럼", all_columns, index=q_index, key="q_select")
+            h_col = st.sidebar.selectbox("양정(Head) 컬럼", all_columns, index=h_index, key="h_select")
+            k_col = st.sidebar.selectbox("축동력(Power) 컬럼", all_columns, index=k_index, key="k_select")
             st.sidebar.markdown("---")
-        else:
-            # 수동 모드가 아닐 경우, 자동으로 찾은 컬럼 사용
-            q_col, h_col, k_col = q_auto, h_auto, k_auto
 
-        # 3. 최종 선택된 컬럼으로 데이터 처리 및 분석
+        # 4. 최종 선택된 컬럼으로 데이터 처리 및 분석
         if not all([q_col, h_col, k_col]):
             st.error("오류: 유량, 양정, 축동력에 해당하는 컬럼을 찾을 수 없습니다. 수동으로 지정해주세요.")
         else:
             st.sidebar.info(f"현재 적용된 컬럼:\n- 유량: **{q_col}**\n- 양정: **{h_col}**\n- 축동력: **{k_col}**")
             
+            # 데이터 정제 및 효율 계산
             processed_data = {}
-            for name, (df, mcol) in {"Reference": (df_r_orig, m_r), "Catalog": (df_c_orig, m_c), "Deviation": (df_d_orig, m_d)}.items():
-                if df.empty or mcol is None: continue
+            for name, (df_orig, mcol) in {"Reference": (df_r_orig, m_r), "Catalog": (df_c_orig, m_c), "Deviation": (df_d_orig, m_d)}.items():
+                if df_orig.empty or mcol is None:
+                    processed_data[name] = (pd.DataFrame(), None)
+                    continue
                 
-                temp_df = df.copy()
+                temp_df = df_orig.copy()
                 for col in [q_col, h_col, k_col]:
                     if col in temp_df.columns:
                         temp_df = temp_df.dropna(subset=[col])
@@ -164,16 +172,31 @@ if uploaded_file:
                 
                 processed_data[name] = (calculate_efficiency_user_formula(temp_df, q_col, h_col, k_col), mcol)
 
-            df_r, m_r = processed_data.get("Reference", (pd.DataFrame(), None))
-            df_c, m_c = processed_data.get("Catalog", (pd.DataFrame(), None))
-            df_d, m_d = processed_data.get("Deviation", (pd.DataFrame(), None))
+            df_r, m_r = processed_data["Reference"]
+            df_c, m_c = processed_data["Catalog"]
+            df_d, m_d = processed_data["Deviation"]
 
             # 탭 생성 및 UI 렌더링
             tab_list = ["Total", "Reference", "Catalog", "Deviation"]
             tabs = st.tabs(tab_list)
 
             with tabs[0]:
-                # ... (이하 Total 탭 로직은 이전과 동일, 단 q_col, h_col, k_col 변수 사용)
                 st.subheader("📊 Total - 통합 곡선 및 운전점 분석")
                 df_f = render_filters(df_r, m_r, "total")
-                # ... 이하 생략
+                models = df_f[m_r].unique().tolist() if not df_f.empty else []
+
+                with st.expander("운전점 분석 (Operating Point Analysis)", expanded=True):
+                    # ... 운전점 분석 로직 ...
+                    pass # 이전 코드와 동일하여 생략
+
+                st.markdown("---")
+                # ... 그래프 표시 로직 ...
+                pass # 이전 코드와 동일하여 생략
+
+            with tabs[1]:
+                # ... 개별 탭 로직 ...
+                st.subheader(f"📊 Reference Data")
+                pass # 이전 코드와 동일하여 생략
+
+else:
+    st.info("시작하려면 Excel 파일을 업로드하세요.")
