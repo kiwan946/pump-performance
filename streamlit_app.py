@@ -4,8 +4,8 @@ import plotly.graph_objs as go
 import numpy as np
 
 # 페이지 기본 설정
-st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v17.0", layout="wide")
-st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v17.0")
+st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v1.0", layout="wide")
+st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v1.0")
 
 # --- 유틸리티 함수들 ---
 SERIES_ORDER = ["XRF3", "XRF5", "XRF10", "XRF15", "XRF20", "XRF32", "XRF45", "XRF64", "XRF95", "XRF125", "XRF155", "XRF185", "XRF215", "XRF255"]
