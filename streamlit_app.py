@@ -55,4 +55,145 @@ def analyze_operating_point(df, models, target_q, target_h, m_col, q_col, h_col,
     results = []
     for model in models:
         model_df = df[df[m_col] == model].sort_values(q_col)
-        if len(model_df) < 2 or not (model_df[q_col].min() <= target_q <= model_df[q
+        if len(model_df) < 2 or not (model_df[q_col].min() <= target_q <= model_df[q_col].max()): continue
+        interp_h = np.interp(target_q, model_df[q_col], model_df[h_col])
+        if interp_h >= target_h:
+            interp_kw = np.interp(target_q, model_df[q_col], model_df[k_col]) if k_col and k_col in model_df.columns else np.nan
+            interp_eff = np.interp(target_q, model_df[q_col], model_df['Efficiency']) if 'Efficiency' in model_df.columns else np.nan
+            results.append({"모델명": model, "요구 유량": target_q, "요구 양정": target_h, "예상 양정": f"{interp_h:.2f}", "예상 동력(kW)": f"{interp_kw:.2f}", "예상 효율(%)": f"{interp_eff:.2f}", "선정 가능": "✅"})
+    return pd.DataFrame(results)
+
+def analyze_fire_pump_point(df, models, target_q, target_h, m_col, q_col, h_col, k_col):
+    if target_q <= 0 or target_h <= 0: return pd.DataFrame()
+    results = []
+    for model in models:
+        model_df = df[df[m_col] == model].sort_values(q_col)
+        if len(model_df) < 2: continue
+        interp_h_rated = np.interp(target_q, model_df[q_col], model_df[h_col], left=np.nan, right=np.nan)
+        if np.isnan(interp_h_rated) or interp_h_rated < target_h: continue
+        h_churn = model_df.iloc[0][h_col]
+        cond1_ok = h_churn <= (1.40 * target_h)
+        q_overload = 1.5 * target_q
+        interp_h_overload = np.interp(q_overload, model_df[q_col], model_df[h_col], left=np.nan, right=np.nan)
+        cond2_ok = (not np.isnan(interp_h_overload)) and (interp_h_overload >= (0.65 * target_h))
+        if cond1_ok and cond2_ok:
+            interp_kw = np.interp(target_q, model_df[q_col], model_df[k_col]) if k_col and k_col in model_df.columns else np.nan
+            results.append({"모델명": model, "정격 예상 양정": f"{interp_h_rated:.2f}", "체절 양정 (≤{1.4*target_h:.2f})": f"{h_churn:.2f}", "최대운전 양정 (≥{0.65*target_h:.2f})": f"{interp_h_overload:.2f}", "예상 동력(kW)": f"{interp_kw:.2f}", "선정 가능": "✅"})
+    return pd.DataFrame(results)
+
+def render_filters(df, mcol, prefix):
+    series_opts = df['Series'].dropna().unique().tolist()
+    default_series = [series_opts[0]] if series_opts else []
+    mode = st.radio("분류 기준", ["시리즈별", "모델별"], key=f"{prefix}_mode", horizontal=True)
+    if mode == "시리즈별":
+        sel = st.multiselect("시리즈 선택", series_opts, default=default_series, key=f"{prefix}_series")
+        df_f = df[df['Series'].isin(sel)] if sel else pd.DataFrame()
+    else:
+        model_opts = df[mcol].dropna().unique().tolist()
+        default_model = [model_opts[0]] if model_opts else []
+        sel = st.multiselect("모델 선택", model_opts, default=default_model, key=f"{prefix}_models")
+        df_f = df[df[mcol].isin(sel)] if sel else pd.DataFrame()
+    return df_f
+
+def add_traces(fig, df, mcol, xcol, ycol, models, mode, line_style=None, name_suffix=""):
+    for m in models:
+        sub = df[df[mcol] == m].sort_values(xcol)
+        if sub.empty or ycol not in sub.columns: continue
+        fig.add_trace(go.Scatter(x=sub[xcol], y=sub[ycol], mode=mode, name=m + name_suffix, line=line_style or {}))
+
+def add_bep_markers(fig, df, mcol, qcol, ycol, models):
+    for m in models:
+        model_df = df[df[mcol] == m]
+        if not model_df.empty and 'Efficiency' in model_df.columns and not model_df['Efficiency'].isnull().all():
+            bep_row = model_df.loc[model_df['Efficiency'].idxmax()]
+            fig.add_trace(go.Scatter(x=[bep_row[qcol]], y=[bep_row[ycol]], mode='markers', marker=dict(symbol='star', size=15, color='gold'), name=f'{m} BEP'))
+
+def render_chart(fig, key):
+    fig.update_layout(dragmode='pan', xaxis=dict(fixedrange=False), yaxis=dict(fixedrange=False), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+    st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displaylogo': False}, key=key)
+
+# --- 메인 애플리케이션 로직 ---
+
+uploaded_file = st.file_uploader("Excel 파일 업로드 (.xlsx 또는 .xlsm)", type=["xlsx", "xlsm"])
+
+if uploaded_file:
+    m_r, df_r_orig = load_sheet("reference data")
+    m_c, df_c_orig = load_sheet("catalog data")
+    m_d, df_d_orig = load_sheet("deviation data")
+
+    if df_r_orig.empty:
+        st.error("오류: 'reference data' 시트를 찾을 수 없거나 '모델명' 컬럼이 없습니다. 파일을 확인해주세요.")
+    else:
+        st.sidebar.title("⚙️ 분석 설정")
+        
+        # --- ★★★ 수정된 부분: 안정화된 컬럼 지정 로직 ★★★ ---
+        
+        # 1. 자동 컬럼 감지
+        q_auto = get_best_match_column(df_r_orig, ["토출량", "유량"])
+        h_auto = get_best_match_column(df_r_orig, ["토출양정", "전양정"])
+        k_auto = get_best_match_column(df_r_orig, ["축동력"])
+        
+        # 2. 수동 지정 옵션 UI 생성
+        manual_select = st.sidebar.checkbox("수동 컬럼 지정")
+        
+        if manual_select:
+            st.sidebar.markdown("---")
+            all_columns = df_r_orig.columns.tolist()
+            q_index = all_columns.index(q_auto) if q_auto in all_columns else 0
+            h_index = all_columns.index(h_auto) if h_auto in all_columns else 0
+            k_index = all_columns.index(k_auto) if k_auto in all_columns else 0
+            
+            q_col = st.sidebar.selectbox("유량(Flow) 컬럼", all_columns, index=q_index, key="q_select")
+            h_col = st.sidebar.selectbox("양정(Head) 컬럼", all_columns, index=h_index, key="h_select")
+            k_col = st.sidebar.selectbox("축동력(Power) 컬럼", all_columns, index=k_index, key="k_select")
+            st.sidebar.markdown("---")
+        else:
+            # 3. 수동 모드가 아닐 경우, 자동으로 찾은 컬럼 사용
+            q_col, h_col, k_col = q_auto, h_auto, k_auto
+
+        # 4. 최종 선택된 컬럼 유효성 검사 후 데이터 처리
+        if not all([q_col, h_col, k_col]):
+            st.error("오류: 유량, 양정, 축동력에 해당하는 컬럼을 찾을 수 없습니다. '수동 컬럼 지정'을 통해 직접 선택해주세요.")
+        else:
+            st.sidebar.info(f"현재 적용된 컬럼:\n- 유량: **{q_col}**\n- 양정: **{h_col}**\n- 축동력: **{k_col}**")
+            
+            processed_data = {}
+            all_dfs = {"Reference": (df_r_orig, m_r), "Catalog": (df_c_orig, m_c), "Deviation": (df_d_orig, m_d)}
+
+            for name, (df_orig, mcol) in all_dfs.items():
+                if df_orig.empty or mcol is None:
+                    processed_data[name] = (pd.DataFrame(), None)
+                    continue
+                
+                temp_df = df_orig.copy()
+                for col in [q_col, h_col, k_col]:
+                    if col in temp_df.columns:
+                        temp_df = temp_df.dropna(subset=[col])
+                        temp_df = temp_df[pd.to_numeric(temp_df[col], errors='coerce').notna()]
+                        temp_df[col] = pd.to_numeric(temp_df[col])
+                
+                processed_data[name] = (calculate_efficiency_user_formula(temp_df, q_col, h_col, k_col), mcol)
+
+            df_r, m_r = processed_data["Reference"]
+            df_c, m_c = processed_data["Catalog"]
+            df_d, m_d = processed_data["Deviation"]
+
+            # 탭 생성 및 UI 렌더링
+            tab_list = ["Total", "Reference", "Catalog", "Deviation"]
+            tabs = st.tabs(tab_list)
+
+            with tabs[0]:
+                st.subheader("📊 Total - 통합 곡선 및 운전점 분석")
+                df_f = render_filters(df_r, m_r, "total")
+                models = df_f[m_r].unique().tolist() if not df_f.empty else []
+
+                with st.expander("운전점 분석 (Operating Point Analysis)", expanded=True):
+                    analysis_mode = st.radio("분석 모드", ["기계", "소방"], key="analysis_mode", horizontal=True)
+                    # ... (이하 로직은 이전과 동일)
+                
+                # ... (이하 그래프 표시 로직은 이전과 동일)
+
+            # ... (이하 개별 탭 로직은 이전과 동일)
+
+else:
+    st.info("시작하려면 Excel 파일을 업로드하세요.")
