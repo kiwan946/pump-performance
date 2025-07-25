@@ -4,8 +4,8 @@ import plotly.graph_objs as go
 import numpy as np
 
 # 페이지 기본 설정
-st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v9.0", layout="wide")
-st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v9.0")
+st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v10.0", layout="wide")
+st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v10.0 (최종 안정화)")
 
 # --- 유틸리티 함수들 ---
 
@@ -16,7 +16,6 @@ SERIES_ORDER = [
 ]
 
 def get_best_match_column(df, names):
-    """키워드를 기반으로 DataFrame에서 컬럼 이름을 찾아 제안합니다."""
     for n in names:
         for col in df.columns:
             if n in col.strip():
@@ -24,7 +23,6 @@ def get_best_match_column(df, names):
     return None
 
 def calculate_efficiency(df, q_col, h_col, k_col):
-    """사용자 지정 공식을 바탕으로 펌프 효율을 계산합니다."""
     if not all(col and col in df.columns for col in [q_col, h_col, k_col]):
         return df
     df_copy = df.copy()
@@ -35,7 +33,6 @@ def calculate_efficiency(df, q_col, h_col, k_col):
     return df_copy
 
 def load_sheet(uploaded_file, sheet_name):
-    """Excel 시트를 로드하고 기본적인 전처리를 수행합니다."""
     try:
         df = pd.read_excel(uploaded_file, sheet_name=sheet_name)
         df.columns = df.columns.str.strip()
@@ -49,20 +46,6 @@ def load_sheet(uploaded_file, sheet_name):
         return mcol, df
     except Exception:
         return None, pd.DataFrame()
-
-def process_data(df, q_col, h_col, k_col):
-    """선택된 컬럼 기준으로 데이터를 정제하고 효율을 계산합니다."""
-    if df.empty:
-        return df
-    
-    temp_df = df.copy()
-    for col in [q_col, h_col, k_col]:
-        if col in temp_df.columns:
-            temp_df = temp_df.dropna(subset=[col])
-            temp_df = temp_df[pd.to_numeric(temp_df[col], errors='coerce').notna()]
-            temp_df[col] = pd.to_numeric(temp_df[col])
-            
-    return calculate_efficiency(temp_df, q_col, h_col, k_col)
 
 # --- 분석 및 시각화 함수들 ---
 def analyze_operating_point(df, models, target_q, target_h, m_col, q_col, h_col, k_col):
@@ -93,146 +76,4 @@ def analyze_fire_pump_point(df, models, target_q, target_h, m_col, q_col, h_col,
         cond2_ok = (not np.isnan(interp_h_overload)) and (interp_h_overload >= (0.65 * target_h))
         if cond1_ok and cond2_ok:
             interp_kw = np.interp(target_q, model_df[q_col], model_df[k_col]) if k_col and k_col in model_df.columns else np.nan
-            results.append({"모델명": model, "정격 예상 양정": f"{interp_h_rated:.2f}", "체절 양정 (≤{1.4*target_h:.2f})": f"{h_churn:.2f}", "최대운전 양정 (≥{0.65*target_h:.2f})": f"{interp_h_overload:.2f}", "예상 동력(kW)": f"{interp_kw:.2f}", "선정 가능": "✅"})
-    return pd.DataFrame(results)
-
-def render_filters(df, mcol, prefix):
-    series_opts = df['Series'].dropna().unique().tolist()
-    default_series = [series_opts[0]] if series_opts else []
-    mode = st.radio("분류 기준", ["시리즈별", "모델별"], key=f"{prefix}_mode", horizontal=True)
-    if mode == "시리즈별":
-        sel = st.multiselect("시리즈 선택", series_opts, default=default_series, key=f"{prefix}_series")
-        df_f = df[df['Series'].isin(sel)] if sel else pd.DataFrame()
-    else:
-        model_opts = df[mcol].dropna().unique().tolist()
-        default_model = [model_opts[0]] if model_opts else []
-        sel = st.multiselect("모델 선택", model_opts, default=default_model, key=f"{prefix}_models")
-        df_f = df[df[mcol].isin(sel)] if sel else pd.DataFrame()
-    return df_f
-
-def add_traces(fig, df, mcol, xcol, ycol, models, mode, line_style=None, name_suffix=""):
-    for m in models:
-        sub = df[df[mcol] == m].sort_values(xcol)
-        if sub.empty or ycol not in sub.columns: continue
-        fig.add_trace(go.Scatter(x=sub[xcol], y=sub[ycol], mode=mode, name=m + name_suffix, line=line_style or {}))
-
-def add_bep_markers(fig, df, mcol, qcol, ycol, models):
-    for m in models:
-        model_df = df[df[mcol] == m]
-        if not model_df.empty and 'Efficiency' in model_df.columns and not model_df['Efficiency'].isnull().all():
-            bep_row = model_df.loc[model_df['Efficiency'].idxmax()]
-            fig.add_trace(go.Scatter(x=[bep_row[qcol]], y=[bep_row[ycol]], mode='markers', marker=dict(symbol='star', size=15, color='gold'), name=f'{m} BEP'))
-
-def render_chart(fig, key):
-    fig.update_layout(dragmode='pan', xaxis=dict(fixedrange=False), yaxis=dict(fixedrange=False), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-    st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displaylogo': False}, key=key)
-
-# --- 메인 애플리케이션 로직 ---
-
-uploaded_file = st.file_uploader("Excel 파일 업로드 (.xlsx 또는 .xlsm)", type=["xlsx", "xlsm"])
-
-if uploaded_file:
-    m_r, df_r_orig = load_sheet(uploaded_file, "reference data")
-    
-    if df_r_orig.empty:
-        st.error("오류: 'reference data' 시트를 찾을 수 없거나 '모델명' 관련 컬럼이 없습니다. 파일을 확인해주세요.")
-    else:
-        st.sidebar.title("⚙️ 분석 설정")
-        st.sidebar.markdown("### 컬럼 지정")
-        st.sidebar.info("자동으로 추천된 컬럼을 확인하고, 필요시 직접 변경해주세요.")
-        
-        all_columns = df_r_orig.columns.tolist()
-        
-        def safe_get_index(items, value, default=0):
-            try: return items.index(value)
-            except (ValueError, TypeError): return default
-
-        q_auto = get_best_match_column(df_r_orig, ["토출량", "유량"])
-        h_auto = get_best_match_column(df_r_orig, ["토출양정", "전양정"])
-        k_auto = get_best_match_column(df_r_orig, ["축동력"])
-        
-        q_col = st.sidebar.selectbox("유량 (Flow) 컬럼", all_columns, index=safe_get_index(all_columns, q_auto))
-        h_col = st.sidebar.selectbox("양정 (Head) 컬럼", all_columns, index=safe_get_index(all_columns, h_auto))
-        k_col = st.sidebar.selectbox("축동력 (Power) 컬럼", all_columns, index=safe_get_index(all_columns, k_auto))
-        
-        df_r = process_data(df_r_orig, q_col, h_col, k_col)
-        
-        m_c, df_c_orig = load_sheet(uploaded_file, "catalog data")
-        df_c = process_data(df_c_orig, q_col, h_col, k_col)
-        
-        m_d, df_d_orig = load_sheet(uploaded_file, "deviation data")
-        df_d = process_data(df_d_orig, q_col, h_col, k_col)
-
-        tab_list = ["Total", "Reference", "Catalog", "Deviation"]
-        tabs = st.tabs(tab_list)
-
-        with tabs[0]:
-            st.subheader("📊 Total - 통합 곡선 및 운전점 분석")
-            df_f = render_filters(df_r, m_r, "total")
-            models = df_f[m_r].unique().tolist() if not df_f.empty else []
-
-            with st.expander("운전점 분석 (Operating Point Analysis)", expanded=True):
-                analysis_mode = st.radio("분석 모드", ["기계", "소방"], key="analysis_mode", horizontal=True)
-                op_col1, op_col2 = st.columns(2)
-                with op_col1: target_q = st.number_input("목표 유량 (Q)", value=0.0, format="%.2f")
-                with op_col2: target_h = st.number_input("목표 양정 (H)", value=0.0, format="%.2f")
-                if analysis_mode == "소방": st.info("소방 펌프 성능 기준 3점을 자동으로 분석합니다.")
-                if st.button("운전점 분석 실행"):
-                    if not models: st.warning("먼저 분석할 시리즈나 모델을 선택해주세요.")
-                    else:
-                        with st.spinner("선택된 모델들을 분석 중입니다..."):
-                            if analysis_mode == "소방": op_results_df = analyze_fire_pump_point(df_r, models, target_q, target_h, m_r, q_col, h_col, k_col)
-                            else: op_results_df = analyze_operating_point(df_r, models, target_q, target_h, m_r, q_col, h_col, k_col)
-                            if not op_results_df.empty: st.success(f"총 {len(op_results_df)}개의 모델이 요구 성능을 만족합니다."); st.dataframe(op_results_df, use_container_width=True)
-                            else: st.info("요구 성능을 만족하는 모델을 찾지 못했습니다.")
-
-            st.markdown("---")
-            ref_show = st.checkbox("Reference 표시", value=True)
-            cat_show = st.checkbox("Catalog 표시")
-            dev_show = st.checkbox("Deviation 표시")
-
-            st.markdown(f"#### Q-H (유량-{h_col})")
-            fig_h = go.Figure()
-            if ref_show and not df_f.empty: add_traces(fig_h, df_f, m_r, q_col, h_col, models, 'lines+markers'); add_bep_markers(fig_h, df_f, m_r, q_col, h_col, models)
-            if cat_show and not df_c.empty: add_traces(fig_h, df_c, m_c, q_col, h_col, models, 'lines+markers', line_style=dict(dash='dot'))
-            if dev_show and not df_d.empty: add_traces(fig_h, df_d, m_d, q_col, h_col, models, 'markers')
-            if target_q > 0 and target_h > 0:
-                fig_h.add_trace(go.Scatter(x=[target_q], y=[target_h], mode='markers', marker=dict(symbol='cross', size=15, color='magenta'), name='정격 운전점'))
-                if analysis_mode == "소방":
-                    churn_h_limit = 1.4 * target_h
-                    fig_h.add_trace(go.Scatter(x=[0], y=[churn_h_limit], mode='markers', marker=dict(symbol='x', size=12, color='red'), name=f'체절점 상한'))
-                    overload_q = 1.5 * target_q
-                    overload_h_limit = 0.65 * target_h
-                    fig_h.add_trace(go.Scatter(x=[overload_q], y=[overload_h_limit], mode='markers', marker=dict(symbol='diamond-open', size=12, color='blue'), name=f'최대점 하한'))
-            render_chart(fig_h, "total_qh")
-
-            st.markdown("#### Q-kW (유량-축동력)")
-            fig_k = go.Figure()
-            if ref_show and not df_f.empty: add_traces(fig_k, df_f, m_r, q_col, k_col, models, 'lines+markers')
-            if cat_show and not df_c.empty: add_traces(fig_k, df_c, m_c, q_col, k_col, models, 'lines+markers', line_style=dict(dash='dot'))
-            if dev_show and not df_d.empty: add_traces(fig_k, df_d, m_d, q_col, k_col, models, 'markers')
-            render_chart(fig_k, "total_qk")
-            
-            st.markdown("#### Q-Efficiency (유량-효율)")
-            fig_e = go.Figure()
-            if ref_show and not df_f.empty: add_traces(fig_e, df_f, m_r, q_col, 'Efficiency', models, 'lines+markers')
-            if cat_show and not df_c.empty: add_traces(fig_e, df_c, m_c, q_col, 'Efficiency', models, 'lines+markers', line_style=dict(dash='dot'))
-            if dev_show and not df_d.empty: add_traces(fig_e, df_d, m_d, q_col, 'Efficiency', models, 'markers')
-            render_chart(fig_e, "total_qe")
-
-        for idx, sheet_name in enumerate(["Reference", "Catalog", "Deviation"]):
-            with tabs[idx+1]:
-                st.subheader(f"📊 {sheet_name} Data")
-                df, mcol = (df_r, m_r) if sheet_name == "Reference" else (df_c, m_c) if sheet_name == "Catalog" else (df_d, m_d)
-                if df.empty: st.info(f"'{sheet_name.lower()} data' 시트의 데이터가 없습니다."); continue
-                df_f_tab = render_filters(df, mcol, sheet_name)
-                models_tab = df_f_tab[mcol].unique().tolist() if not df_f_tab.empty else []
-                if not models_tab: st.info("차트를 보려면 모델을 선택해주세요."); continue
-                mode, style = ('markers', None) if sheet_name == "Deviation" else ('lines+markers', dict(dash='dot') if sheet_name == "Catalog" else None)
-                st.markdown(f"#### Q-H ({h_col})"); fig1 = go.Figure(); add_traces(fig1, df_f_tab, mcol, q_col, h_col, models_tab, mode, line_style=style); render_chart(fig1, key=f"{sheet_name}_qh")
-                if k_col in df_f_tab.columns: st.markdown("#### Q-kW (축동력)"); fig2 = go.Figure(); add_traces(fig2, df_f_tab, mcol, q_col, k_col, models_tab, mode, line_style=style); render_chart(fig2, key=f"{sheet_name}_qk")
-                if 'Efficiency' in df_f_tab.columns: st.markdown("#### Q-Efficiency (효율)"); fig3 = go.Figure(); add_traces(fig3, df_f_tab, mcol, q_col, 'Efficiency', models_tab, mode, line_style=style); fig3.update_layout(yaxis_title="효율 (%)", yaxis=dict(range=[0, 100])); render_chart(fig3, key=f"{sheet_name}_qe")
-                st.markdown("#### 데이터 확인"); st.dataframe(df_f_tab, use_container_width=True)
-
-else:
-    st.info("시작하려면 Excel 파일을 업로드하세요.")
+            results.append({"모델명": model, "정격 예상 양정": f"{interp_h_rated:.2f}", "체절 양정 (≤{1.4*target_h:.2f})": f"{h_churn:.2
