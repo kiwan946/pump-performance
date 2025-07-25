@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+import plotly.graph_objs as go
+import numpy as np
 
 # 페이지 기본 설정
 st.set_page_config(page_title="디버깅 버전", layout="wide")
