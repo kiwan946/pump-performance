@@ -4,8 +4,8 @@ import plotly.graph_objs as go
 import numpy as np
 
 # 페이지 기본 설정
-st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v16.0", layout="wide")
-st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v16.0")
+st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v1.0", layout="wide")
+st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v1.0")
 
 # --- 유틸리티 함수들 ---
 SERIES_ORDER = ["XRF3", "XRF5", "XRF10", "XRF15", "XRF20", "XRF32", "XRF45", "XRF64", "XRF95", "XRF125", "XRF155", "XRF185", "XRF215", "XRF255"]
@@ -132,7 +132,7 @@ if uploaded_file:
         # 2. 사이드바 컬럼 선택 UI
         st.sidebar.title("⚙️ 분석 설정")
         st.sidebar.markdown("### 컬럼 지정")
-        st.sidebar.info("자동으로 추천된 컬럼을 확인하고, 필요시 직접 변경해주세요.")
+        st.sidebar.info("자동으로 설정된 컬럼을 확인하고, 필요시 직접 변경해주세요.")
         
         all_columns = df_r_orig.columns.tolist()
         def safe_get_index(items, value, default=0):
@@ -166,7 +166,7 @@ if uploaded_file:
                 op_col1, op_col2 = st.columns(2)
                 with op_col1: target_q = st.number_input("목표 유량 (Q)", value=0.0, format="%.2f")
                 with op_col2: target_h = st.number_input("목표 양정 (H)", value=0.0, format="%.2f")
-                if analysis_mode == "소방": st.info("소방 펌프 성능 기준 3점을 자동으로 분석합니다.")
+                if analysis_mode == "소방": st.info("선형보간법을 사용하여 소방 펌프 성능 기준 3점을 자동으로 분석합니다.")
                 if st.button("운전점 분석 실행"):
                     if not models: st.warning("먼저 분석할 시리즈나 모델을 선택해주세요.")
                     else:
