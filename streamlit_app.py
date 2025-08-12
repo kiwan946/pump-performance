@@ -4,8 +4,8 @@ import plotly.graph_objs as go
 import numpy as np
 
 # 페이지 기본 설정
-st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v1.0", layout="wide")
-st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v1.0")
+st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v18.0", layout="wide")
+st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v18.0")
 
 # --- 유틸리티 함수들 ---
 SERIES_ORDER = ["XRF3", "XRF5", "XRF10", "XRF15", "XRF20", "XRF32", "XRF45", "XRF64", "XRF95", "XRF125", "XRF155", "XRF185", "XRF215", "XRF255"]
@@ -112,9 +112,7 @@ def add_bep_markers(fig, df, mcol, qcol, ycol, models):
             bep_row = model_df.loc[model_df['Efficiency'].idxmax()]
             fig.add_trace(go.Scatter(x=[bep_row[qcol]], y=[bep_row[ycol]], mode='markers', marker=dict(symbol='star', size=15, color='gold'), name=f'{m} BEP'))
 
-# ★★★ 추가된 부분: 보조선(가이드라인) 추가 함수 ★★★
 def add_guide_lines(fig, h_line, v_line):
-    """차트에 수평 및 수직 보조선을 추가합니다."""
     if h_line is not None and h_line > 0:
         fig.add_shape(type="line", x0=0, x1=1, xref="paper", y0=h_line, y1=h_line, yref="y", line=dict(color="gray", dash="dash"))
     if v_line is not None and v_line > 0:
@@ -137,28 +135,31 @@ if uploaded_file:
     if df_r_orig.empty:
         st.error("오류: 'reference data' 시트를 찾을 수 없거나 '모델명' 관련 컬럼이 없습니다. 파일을 확인해주세요.")
     else:
-        # 2. 사이드바 컬럼 선택 UI
+        # 2. 사이드바 컬럼 선택 UI (Total 탭 및 분석용)
         st.sidebar.title("⚙️ 분석 설정")
-        st.sidebar.markdown("### 컬럼 지정")
-        st.sidebar.info("자동으로 추천된 컬럼을 확인하고, 필요시 직접 변경해주세요.")
+        st.sidebar.markdown("### Total 탭 & 운전점 분석 컬럼 지정")
         
         all_columns = df_r_orig.columns.tolist()
         def safe_get_index(items, value, default=0):
             try: return items.index(value)
             except (ValueError, TypeError): return default
 
-        q_auto = get_best_match_column(df_r_orig, ["토출량", "유량"])
-        h_auto = get_best_match_column(df_r_orig, ["토출양정", "전양정"])
-        k_auto = get_best_match_column(df_r_orig, ["축동력"])
+        q_auto_r = get_best_match_column(df_r_orig, ["토출량", "유량"])
+        h_auto_r = get_best_match_column(df_r_orig, ["토출양정", "전양정"])
+        k_auto_r = get_best_match_column(df_r_orig, ["축동력"])
         
-        q_col = st.sidebar.selectbox("유량 (Flow) 컬럼", all_columns, index=safe_get_index(all_columns, q_auto))
-        h_col = st.sidebar.selectbox("양정 (Head) 컬럼", all_columns, index=safe_get_index(all_columns, h_auto))
-        k_col = st.sidebar.selectbox("축동력 (Power) 컬럼", all_columns, index=safe_get_index(all_columns, k_auto))
+        q_col_total = st.sidebar.selectbox("유량 (Flow) 컬럼", all_columns, index=safe_get_index(all_columns, q_auto_r))
+        h_col_total = st.sidebar.selectbox("양정 (Head) 컬럼", all_columns, index=safe_get_index(all_columns, h_auto_r))
+        k_col_total = st.sidebar.selectbox("축동력 (Power) 컬럼", all_columns, index=safe_get_index(all_columns, k_auto_r))
         
-        # 3. 선택된 컬럼으로 모든 데이터 정제 및 효율 계산
-        df_r = process_data(df_r_orig, q_col, h_col, k_col)
-        df_c = process_data(df_c_orig, q_col, h_col, k_col)
-        df_d = process_data(df_d_orig, q_col, h_col, k_col)
+        # ★★★ 수정된 부분: 각 시트별 컬럼명을 독립적으로 감지 ★★★
+        q_c, h_c, k_c = (get_best_match_column(df_c_orig, ["토출량", "유량"]), get_best_match_column(df_c_orig, ["토출양정", "전양정"]), get_best_match_column(df_c_orig, ["축동력"]))
+        q_d, h_d, k_d = (get_best_match_column(df_d_orig, ["토출량", "유량"]), get_best_match_column(df_d_orig, ["토출양정", "전양정"]), get_best_match_column(df_d_orig, ["축동력"]))
+
+        # 3. 각 데이터에 맞는 컬럼으로 데이터 정제 및 효율 계산
+        df_r = process_data(df_r_orig, q_col_total, h_col_total, k_col_total)
+        df_c = process_data(df_c_orig, q_c, h_c, k_c)
+        df_d = process_data(df_d_orig, q_d, h_d, k_d)
         
         # 4. 탭 생성 및 화면 표시
         tab_list = ["Total", "Reference", "Catalog", "Deviation"]
@@ -169,7 +170,6 @@ if uploaded_file:
             df_f = render_filters(df_r, m_r, "total")
             models = df_f[m_r].unique().tolist() if m_r and not df_f.empty else []
 
-            # ★★★ 수정된 부분: 운전점 분석을 기본적으로 접힌 상태로 변경 ★★★
             with st.expander("운전점 분석 (Operating Point Analysis)"):
                 analysis_mode = st.radio("분석 모드", ["기계", "소방"], key="analysis_mode", horizontal=True)
                 op_col1, op_col2 = st.columns(2)
@@ -180,78 +180,59 @@ if uploaded_file:
                     if not models: st.warning("먼저 분석할 시리즈나 모델을 선택해주세요.")
                     else:
                         with st.spinner("선택된 모델들을 분석 중입니다..."):
-                            if analysis_mode == "소방": op_results_df = analyze_fire_pump_point(df_r, models, target_q, target_h, m_r, q_col, h_col, k_col)
-                            else: op_results_df = analyze_operating_point(df_r, models, target_q, target_h, m_r, q_col, h_col, k_col)
+                            if analysis_mode == "소방": op_results_df = analyze_fire_pump_point(df_r, models, target_q, target_h, m_r, q_col_total, h_col_total, k_col_total)
+                            else: op_results_df = analyze_operating_point(df_r, models, target_q, target_h, m_r, q_col_total, h_col_total, k_col_total)
                             if not op_results_df.empty: st.success(f"총 {len(op_results_df)}개의 모델이 요구 성능을 만족합니다."); st.dataframe(op_results_df, use_container_width=True)
                             else: st.info("요구 성능을 만족하는 모델을 찾지 못했습니다.")
 
-            # ★★★ 추가된 부분: 보조선 기능 Expander ★★★
             with st.expander("차트 보조선 추가"):
                 g_col1, g_col2, g_col3 = st.columns(3)
-                with g_col1:
-                    st.markdown("##### Q-H Chart")
-                    h_guide_h = st.number_input("수평선 (H축 값)", key="h_guide_h", value=0.0, format="%.2f")
-                    v_guide_h = st.number_input("수직선 (Q축 값)", key="v_guide_h", value=0.0, format="%.2f")
-                with g_col2:
-                    st.markdown("##### Q-kW Chart")
-                    h_guide_k = st.number_input("수평선 (kW축 값)", key="h_guide_k", value=0.0, format="%.2f")
-                    v_guide_k = st.number_input("수직선 (Q축 값)", key="v_guide_k", value=0.0, format="%.2f")
-                with g_col3:
-                    st.markdown("##### Q-Eff Chart")
-                    h_guide_e = st.number_input("수평선 (Eff축 값)", key="h_guide_e", value=0.0, format="%.2f")
-                    v_guide_e = st.number_input("수직선 (Q축 값)", key="v_guide_e", value=0.0, format="%.2f")
+                with g_col1: h_guide_h, v_guide_h = st.number_input("Q-H 수평선", value=0.0), st.number_input("Q-H 수직선", value=0.0)
+                with g_col2: h_guide_k, v_guide_k = st.number_input("Q-kW 수평선", value=0.0), st.number_input("Q-kW 수직선", value=0.0)
+                with g_col3: h_guide_e, v_guide_e = st.number_input("Q-Eff 수평선", value=0.0), st.number_input("Q-Eff 수직선", value=0.0)
 
             st.markdown("---")
             ref_show = st.checkbox("Reference 표시", value=True)
             cat_show = st.checkbox("Catalog 표시")
             dev_show = st.checkbox("Deviation 표시")
 
-            st.markdown(f"#### Q-H (유량-{h_col})")
+            st.markdown(f"#### Q-H (유량-{h_col_total})")
             fig_h = go.Figure()
-            if ref_show and not df_f.empty: add_traces(fig_h, df_f, m_r, q_col, h_col, models, 'lines+markers'); add_bep_markers(fig_h, df_f, m_r, q_col, h_col, models)
-            if cat_show and not df_c.empty: add_traces(fig_h, df_c, m_c, q_col, h_col, models, 'lines+markers', line_style=dict(dash='dot'))
-            if dev_show and not df_d.empty: add_traces(fig_h, df_d, m_d, q_col, h_col, models, 'markers')
+            if ref_show and not df_f.empty: add_traces(fig_h, df_f, m_r, q_col_total, h_col_total, models, 'lines+markers'); add_bep_markers(fig_h, df_f, m_r, q_col_total, h_col_total, models)
+            if cat_show and not df_c.empty: add_traces(fig_h, df_c, m_c, q_c, h_c, models, 'lines+markers', line_style=dict(dash='dot'))
+            if dev_show and not df_d.empty: add_traces(fig_h, df_d, m_d, q_d, h_d, models, 'markers')
             if 'target_q' in locals() and target_q > 0 and target_h > 0:
                 fig_h.add_trace(go.Scatter(x=[target_q], y=[target_h], mode='markers', marker=dict(symbol='cross', size=15, color='magenta'), name='정격 운전점'))
                 if analysis_mode == "소방":
-                    churn_h_limit = 1.4 * target_h
-                    fig_h.add_trace(go.Scatter(x=[0], y=[churn_h_limit], mode='markers', marker=dict(symbol='x', size=12, color='red'), name=f'체절점 상한'))
-                    overload_q = 1.5 * target_q
-                    overload_h_limit = 0.65 * target_h
-                    fig_h.add_trace(go.Scatter(x=[overload_q], y=[overload_h_limit], mode='markers', marker=dict(symbol='diamond-open', size=12, color='blue'), name=f'최대점 하한'))
-            add_guide_lines(fig_h, h_guide_h, v_guide_h) # 보조선 추가
+                    churn_h_limit = 1.4 * target_h; fig_h.add_trace(go.Scatter(x=[0], y=[churn_h_limit], mode='markers', marker=dict(symbol='x', size=12, color='red'), name=f'체절점 상한'))
+                    overload_q, overload_h_limit = 1.5 * target_q, 0.65 * target_h; fig_h.add_trace(go.Scatter(x=[overload_q], y=[overload_h_limit], mode='markers', marker=dict(symbol='diamond-open', size=12, color='blue'), name=f'최대점 하한'))
+            add_guide_lines(fig_h, h_guide_h, v_guide_h)
             render_chart(fig_h, "total_qh")
 
             st.markdown("#### Q-kW (유량-축동력)")
             fig_k = go.Figure()
-            if ref_show and not df_f.empty: add_traces(fig_k, df_f, m_r, q_col, k_col, models, 'lines+markers')
-            if cat_show and not df_c.empty: add_traces(fig_k, df_c, m_c, q_col, k_col, models, 'lines+markers', line_style=dict(dash='dot'))
-            if dev_show and not df_d.empty: add_traces(fig_k, df_d, m_d, q_col, k_col, models, 'markers')
-            add_guide_lines(fig_k, h_guide_k, v_guide_k) # 보조선 추가
+            if ref_show and not df_f.empty: add_traces(fig_k, df_f, m_r, q_col_total, k_col_total, models, 'lines+markers')
+            if cat_show and not df_c.empty: add_traces(fig_k, df_c, m_c, q_c, k_c, models, 'lines+markers', line_style=dict(dash='dot'))
+            if dev_show and not df_d.empty: add_traces(fig_k, df_d, m_d, q_d, k_d, models, 'markers')
+            add_guide_lines(fig_k, h_guide_k, v_guide_k)
             render_chart(fig_k, "total_qk")
             
             st.markdown("#### Q-Efficiency (유량-효율)")
             fig_e = go.Figure()
-            if ref_show and not df_f.empty: add_traces(fig_e, df_f, m_r, q_col, 'Efficiency', models, 'lines+markers'); add_bep_markers(fig_e, df_f, m_r, q_col, 'Efficiency', models)
-            if cat_show and not df_c.empty: add_traces(fig_e, df_c, m_c, q_col, 'Efficiency', models, 'lines+markers', line_style=dict(dash='dot'))
-            if dev_show and not df_d.empty: add_traces(fig_e, df_d, m_d, q_col, 'Efficiency', models, 'markers')
-            add_guide_lines(fig_e, h_guide_e, v_guide_e) # 보조선 추가
+            if ref_show and not df_f.empty: add_traces(fig_e, df_f, m_r, q_col_total, 'Efficiency', models, 'lines+markers'); add_bep_markers(fig_e, df_f, m_r, q_col_total, 'Efficiency', models)
+            if cat_show and not df_c.empty: add_traces(fig_e, df_c, m_c, q_c, 'Efficiency', models, 'lines+markers', line_style=dict(dash='dot'))
+            if dev_show and not df_d.empty: add_traces(fig_e, df_d, m_d, q_d, 'Efficiency', models, 'markers')
+            add_guide_lines(fig_e, h_guide_e, v_guide_e)
             render_chart(fig_e, "total_qe")
 
         for idx, sheet_name in enumerate(["Reference", "Catalog", "Deviation"]):
             with tabs[idx+1]:
                 st.subheader(f"📊 {sheet_name} Data")
                 
-                df_orig, mcol_orig = (df_r_orig, m_r) if sheet_name == "Reference" else \
-                                  (df_c_orig, m_c) if sheet_name == "Catalog" else \
-                                  (df_d_orig, m_d)
+                df, mcol, df_orig = (df_r, m_r, df_r_orig) if sheet_name == "Reference" else \
+                                  (df_c, m_c, df_c_orig) if sheet_name == "Catalog" else \
+                                  (df_d, m_d, df_d_orig)
                 
-                df_processed = (df_r, m_r) if sheet_name == "Reference" else \
-                               (df_c, m_c) if sheet_name == "Catalog" else \
-                               (df_d, m_d)
-                
-                df, mcol = df_processed
-
                 if df.empty:
                     st.info(f"'{sheet_name.lower()}' 시트의 데이터가 없거나 처리할 수 없습니다.")
                     continue
