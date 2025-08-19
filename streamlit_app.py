@@ -6,10 +6,10 @@ import numpy as np
 from scipy.stats import t
 
 # 페이지 기본 설정
-st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v25.0", layout="wide")
-st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v25.0")
+st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v26.0", layout="wide")
+st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v26.0")
 
-# --- 유틸리티 및 기본 분석 함수들 (이전과 동일) ---
+# --- 모든 유틸리티 및 분석 함수들은 이전과 동일 ---
 SERIES_ORDER = ["XRF3", "XRF5", "XRF10", "XRF15", "XRF20", "XRF32", "XRF45", "XRF64", "XRF95", "XRF125", "XRF155", "XRF185", "XRF215", "XRF255"]
 
 def get_best_match_column(df, names):
@@ -46,7 +46,7 @@ def process_data(df, q_col, h_col, k_col):
     if df.empty: return df
     temp_df = df.copy()
     for col in [q_col, h_col, k_col]:
-        if col and col in temp_df.columns: # 컬럼 존재 여부 확인
+        if col and col in temp_df.columns:
             temp_df = temp_df.dropna(subset=[col])
             temp_df = temp_df[pd.to_numeric(temp_df[col], errors='coerce').notna()]
             temp_df[col] = pd.to_numeric(temp_df[col])
@@ -123,24 +123,19 @@ def render_chart(fig, key):
     fig.update_layout(dragmode='pan', xaxis=dict(fixedrange=False), yaxis=dict(fixedrange=False), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
     st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displaylogo': False}, key=key)
 
-# ★★★ 분석 함수 일반화: 양정, 축동력 모두 처리 ★★★
 def perform_validation_analysis(df_r, df_d, m_r, m_d, q_r, q_d, y_r_col, y_d_col, test_id_col, models_to_validate, analysis_type):
     all_results = {}
-    
     for model in models_to_validate:
         model_summary = []
         model_r_df = df_r[(df_r[m_r] == model) & (df_r[y_r_col].notna())].sort_values(by=q_r)
         model_d_df = df_d[(df_d[m_d] == model) & (df_d[y_d_col].notna())]
-
         if model_r_df.empty or model_d_df.empty: continue
         
         max_q = model_r_df[q_r].max()
         validation_q = np.linspace(0, max_q, 10)
         ref_y = np.interp(validation_q, model_r_df[q_r], model_r_df[y_r_col])
-        
         test_ids = model_d_df[test_id_col].unique()
         interpolated_y_samples = {q: [] for q in validation_q}
-        
         for test_id in test_ids:
             test_df = model_d_df[model_d_df[test_id_col] == test_id].sort_values(by=q_d)
             if len(test_df) < 2: continue
@@ -151,11 +146,8 @@ def perform_validation_analysis(df_r, df_d, m_r, m_d, q_r, q_d, y_r_col, y_d_col
         for i, q in enumerate(validation_q):
             samples = np.array(interpolated_y_samples[q])
             n = len(samples)
-            
-            # 컬럼명 설정
             base_col_name = f"기준 {analysis_type}"
             mean_col_name = "평균"
-            
             if n < 2:
                 model_summary.append({
                     "모델명": model, "검증 유량(Q)": q, base_col_name: ref_y[i], 
@@ -179,10 +171,8 @@ def perform_validation_analysis(df_r, df_d, m_r, m_d, q_r, q_d, y_r_col, y_d_col
             })
         
         all_results[model] = { 'summary': pd.DataFrame(model_summary), 'samples': interpolated_y_samples }
-            
     return all_results
 
-# ★★★ 시각화 함수 추가: 분석 결과를 UI에 표시 ★★★
 def display_validation_output(model, validation_data, analysis_type, df_r, df_d, m_r, m_d, q_r, q_d, y_r_col, y_d_col, test_id_col):
     if model not in validation_data or validation_data[model]['summary'].empty:
         st.warning(f"'{model}' 모델에 대한 {analysis_type} 분석 결과가 없습니다.")
@@ -191,41 +181,34 @@ def display_validation_output(model, validation_data, analysis_type, df_r, df_d,
     model_data = validation_data[model]
     model_summary_df = model_data['summary']
     model_samples = model_data['samples']
-
     base_col_name = f"기준 {analysis_type}"
     
-    # 분석 결과 요약 테이블
+    st.markdown(f"#### 분석 결과 요약 ({analysis_type})")
     display_summary = model_summary_df.drop(columns=['_original_q']).set_index('모델명')
-    st.markdown("#### 분석 결과 요약"); st.dataframe(display_summary, use_container_width=True)
+    st.dataframe(display_summary, use_container_width=True)
     
-    # 상세 결과 시각화
-    st.markdown("#### 모델별 상세 결과 시각화")
+    st.markdown(f"#### 모델별 상세 결과 시각화 ({analysis_type})")
     fig_main = go.Figure()
     numeric_cols = ["검증 유량(Q)", base_col_name, "95% CI 하한", "95% CI 상한"]
     for col in numeric_cols: model_summary_df[col] = pd.to_numeric(model_summary_df[col], errors='coerce')
     
-    # 95% 신뢰구간
     fig_main.add_trace(go.Scatter(x=model_summary_df['검증 유량(Q)'], y=model_summary_df['95% CI 상한'], fill=None, mode='lines', line_color='rgba(0,100,80,0.2)', name='95% CI 상한'))
     fig_main.add_trace(go.Scatter(x=model_summary_df['검증 유량(Q)'], y=model_summary_df['95% CI 하한'], fill='tonexty', mode='lines', line_color='rgba(0,100,80,0.2)', name='95% CI 하한'))
     
-    # 개별 시험 데이터
     model_d_df_vis = df_d[(df_d[m_d] == model) & (df_d[y_d_col].notna())]; test_ids_vis = model_d_df_vis[test_id_col].unique()
     for test_id in test_ids_vis:
         test_df_vis = model_d_df_vis[model_d_df_vis[test_id_col] == test_id].sort_values(by=q_d)
         fig_main.add_trace(go.Scatter(x=test_df_vis[q_d], y=test_df_vis[y_d_col], mode='lines', line=dict(width=1, color='grey'), name=f'시험 {test_id}', opacity=0.5, showlegend=False))
     
-    # Reference 데이터
     model_r_df_vis = df_r[(df_r[m_r] == model) & (df_r[y_r_col].notna())].sort_values(by=q_r)
     fig_main.add_trace(go.Scatter(x=model_r_df_vis[q_r], y=model_r_df_vis[y_r_col], mode='lines+markers', line=dict(color='blue', width=3), name='Reference Curve'))
     
-    # 양정일 경우에만 합격/불합격 라인 추가
     if analysis_type == '양정':
         upper_limit = model_summary_df[base_col_name] * 1.05
         lower_limit = model_summary_df[base_col_name] * 0.95
         fig_main.add_trace(go.Scatter(x=model_summary_df['검증 유량(Q)'], y=upper_limit, mode='lines', name='양정 상한 (+5%)', line=dict(color='orange', dash='dash')))
         fig_main.add_trace(go.Scatter(x=model_summary_df['검증 유량(Q)'], y=lower_limit, mode='lines', name='양정 하한 (-5%)', line=dict(color='orange', dash='dash')))
 
-    # 유효성 검증 포인트
     valid_points = model_summary_df[model_summary_df['유효성'] == '✅ 유효']; invalid_points = model_summary_df[model_summary_df['유효성'] == '❌ 벗어남']
     fig_main.add_trace(go.Scatter(x=valid_points['검증 유량(Q)'], y=valid_points[base_col_name], mode='markers', marker=dict(color='green', size=10, symbol='circle'), name='유효 포인트'))
     fig_main.add_trace(go.Scatter(x=invalid_points['검증 유량(Q)'], y=invalid_points[base_col_name], mode='markers', marker=dict(color='red', size=10, symbol='x'), name='벗어남 포인트'))
@@ -233,124 +216,105 @@ def display_validation_output(model, validation_data, analysis_type, df_r, df_d,
     fig_main.update_layout(yaxis_title=analysis_type)
     st.plotly_chart(fig_main, use_container_width=True)
 
-    # 데이터 분포표
     with st.expander(f"검증 유량 지점별 {analysis_type} 데이터 분포표 보기"):
         cols = st.columns(5)
         col_idx = 0
         for idx, row in model_summary_df.iterrows():
             q_point_original = row['_original_q']
             samples = model_samples.get(q_point_original, [])
-
             if not samples or row['시험 횟수(n)'] < 2: continue
-            
-            q_point_str = row['검증 유량(Q)']
-            ref_y_point = float(row[base_col_name])
-            mean_y = float(row['평균'])
-            std_y = float(row['표준편차'])
-            n_samples = int(row['시험 횟수(n)'])
-
+            q_point_str, ref_y_point, mean_y, std_y, n_samples = row['검증 유량(Q)'], float(row[base_col_name]), float(row['평균']), float(row['표준편차']), int(row['시험 횟수(n)'])
             with cols[col_idx % 5]:
                 st.markdown(f"**Q = {q_point_str}**")
                 st.markdown(f"<small>평균: {mean_y:.2f} | 표준편차: {std_y:.2f} | n: {n_samples}</small>", unsafe_allow_html=True)
-                
                 fig_dist = ff.create_distplot([samples], ['시험 데이터'], show_hist=False, show_rug=True)
                 fig_dist.add_vline(x=ref_y_point, line_width=2, line_dash="dash", line_color="red")
                 fig_dist.add_vline(x=mean_y, line_width=2, line_dash="dot", line_color="blue")
-
                 fig_dist.update_layout(title_text=None, xaxis_title=analysis_type, yaxis_title="밀도", height=280, margin=dict(l=20,r=20,t=5,b=20), showlegend=False)
                 st.plotly_chart(fig_dist, use_container_width=True, config={'displayModeBar': False})
             col_idx += 1
 
 # --- 메인 애플리케이션 로직 ---
 uploaded_file = st.file_uploader("Excel 파일 업로드 (.xlsx 또는 .xlsm)", type=["xlsx", "xlsm"])
-
 if uploaded_file:
-    # 데이터 로드
-    m_r, df_r_orig = load_sheet(uploaded_file, "reference data")
-    m_c, df_c_orig = load_sheet(uploaded_file, "catalog data")
-    m_d, df_d_orig = load_sheet(uploaded_file, "deviation data")
-    
-    if df_r_orig.empty:
-        st.error("오류: 'reference data' 시트를 찾을 수 없거나 '모델명' 관련 컬럼이 없습니다. 파일을 확인해주세요.")
+    m_r, df_r_orig = load_sheet(uploaded_file, "reference data"); m_c, df_c_orig = load_sheet(uploaded_file, "catalog data"); m_d, df_d_orig = load_sheet(uploaded_file, "deviation data")
+    if df_r_orig.empty: st.error("오류: 'reference data' 시트를 찾을 수 없거나 '모델명' 관련 컬럼이 없습니다. 파일을 확인해주세요.")
     else:
-        # 사이드바 UI
-        st.sidebar.title("⚙️ 분석 설정")
-        st.sidebar.markdown("### Total 탭 & 운전점 분석 컬럼 지정")
-        
+        st.sidebar.title("⚙️ 분석 설정"); st.sidebar.markdown("### Total 탭 & 운전점 분석 컬럼 지정")
         all_columns_r = df_r_orig.columns.tolist()
         def safe_get_index(items, value, default=0):
             try: return items.index(value)
             except (ValueError, TypeError): return default
-
-        q_auto_r = get_best_match_column(df_r_orig, ["토출량", "유량"])
-        h_auto_r = get_best_match_column(df_r_orig, ["토출양정", "전양정"])
-        k_auto_r = get_best_match_column(df_r_orig, ["축동력"])
-        
+        q_auto_r = get_best_match_column(df_r_orig, ["토출량", "유량"]); h_auto_r = get_best_match_column(df_r_orig, ["토출양정", "전양정"]); k_auto_r = get_best_match_column(df_r_orig, ["축동력"])
         q_col_total = st.sidebar.selectbox("유량 (Flow) 컬럼", all_columns_r, index=safe_get_index(all_columns_r, q_auto_r))
         h_col_total = st.sidebar.selectbox("양정 (Head) 컬럼", all_columns_r, index=safe_get_index(all_columns_r, h_auto_r))
         k_col_total = st.sidebar.selectbox("축동력 (Power) 컬럼", all_columns_r, index=safe_get_index(all_columns_r, k_auto_r))
-        
-        # 시트별 컬럼명 자동 감지
         q_c, h_c, k_c = (get_best_match_column(df_c_orig, ["토출량", "유량"]), get_best_match_column(df_c_orig, ["토출양정", "전양정"]), get_best_match_column(df_c_orig, ["축동력"]))
         q_d, h_d, k_d = (get_best_match_column(df_d_orig, ["토출량", "유량"]), get_best_match_column(df_d_orig, ["토출양정", "전양정"]), get_best_match_column(df_d_orig, ["축동력"]))
         test_id_col_d = get_best_match_column(df_d_orig, ["시험번호", "Test No", "Test ID"])
-
-        # Deviation 데이터 전처리
         if not df_d_orig.empty and test_id_col_d:
             df_d_orig[test_id_col_d] = df_d_orig[test_id_col_d].astype(str).str.strip()
             df_d_orig[test_id_col_d].replace(['', 'nan'], np.nan, inplace=True)
             df_d_orig[test_id_col_d] = df_d_orig[test_id_col_d].ffill()
+        df_r = process_data(df_r_orig, q_col_total, h_col_total, k_col_total); df_c = process_data(df_c_orig, q_c, h_c, k_c); df_d = process_data(df_d_orig, q_d, h_d, k_d)
+        tab_list = ["Total", "Reference", "Catalog", "Deviation", "Validation"]; tabs = st.tabs(tab_list)
+        # ... (Total 및 다른 탭들은 이전과 동일)
 
-        # 데이터 정제
-        df_r = process_data(df_r_orig, q_col_total, h_col_total, k_col_total)
-        df_c = process_data(df_c_orig, q_c, h_c, k_c)
-        df_d = process_data(df_d_orig, q_d, h_d, k_d)
-        
-        tab_list = ["Total", "Reference", "Catalog", "Deviation", "Validation"]
-        tabs = st.tabs(tab_list)
-
-        # Total, Reference, Catalog, Deviation 탭 (이전과 동일)
-        # ...
-
-        # ★★★ Validation 탭 로직 전면 수정 ★★★
         with tabs[4]:
             st.subheader("🔬 Reference Data 통계적 유효성 검증")
-            
-            # 축동력 컬럼 존재 여부 확인
             power_cols_exist = k_col_total and k_d
-            if not power_cols_exist:
-                st.info("축동력 분석을 위해서는 Reference와 Deviation 시트 양쪽에 '축동력' 관련 컬럼이 필요합니다.")
-
-            if df_d_orig.empty or test_id_col_d is None:
-                st.warning("유효성 검증을 위해 'deviation data' 시트와 '시험번호' 컬럼이 필요합니다.")
+            if not power_cols_exist: st.info("축동력 분석을 위해서는 Reference와 Deviation 시트 양쪽에 '축동력' 관련 컬럼이 필요합니다.")
+            if df_d_orig.empty or test_id_col_d is None: st.warning("유효성 검증을 위해 'deviation data' 시트와 '시험번호' 컬럼이 필요합니다.")
             else:
-                with st.expander("병합 셀 처리된 Deviation 데이터 확인하기"):
-                    st.dataframe(df_d_orig)
-
+                with st.expander("병합 셀 처리된 Deviation 데이터 확인하기"): st.dataframe(df_d_orig)
                 common_models = sorted(list(set(df_r[m_r].unique()) & set(df_d[m_d].unique())))
-                if not common_models:
-                    st.info("Reference와 Deviation 데이터에 공통으로 존재하는 모델이 없습니다.")
+                if not common_models: st.info("Reference와 Deviation 데이터에 공통으로 존재하는 모델이 없습니다.")
                 else:
                     models_to_validate = st.multiselect("검증할 모델 선택", common_models, default=common_models[:1])
-
                     if st.button("📈 통계 검증 실행"):
                         with st.spinner("통계 분석을 진행 중입니다..."):
                             head_results = perform_validation_analysis(df_r, df_d, m_r, m_d, q_col_total, q_d, h_col_total, h_d, test_id_col_d, models_to_validate, "양정")
-                            if power_cols_exist:
-                                power_results = perform_validation_analysis(df_r, df_d, m_r, m_d, q_col_total, q_d, k_col_total, k_d, test_id_col_d, models_to_validate, "축동력")
+                            if power_cols_exist: power_results = perform_validation_analysis(df_r, df_d, m_r, m_d, q_col_total, q_d, k_col_total, k_d, test_id_col_d, models_to_validate, "축동력")
                         st.success("통계 분석 완료!")
                         
                         for model in models_to_validate:
                             st.markdown("---"); st.markdown(f"### 모델: {model}")
-                            
-                            # 1. 양정 결과 표시
-                            st.subheader("📈 양정(Head) 유효성 검증")
-                            display_validation_output(model, head_results, "양정", df_r, df_d, m_r, m_d, q_col_total, q_d, h_col_total, h_d, test_id_col_d)
-
-                            # 2. 축동력 결과 표시 (데이터가 있을 경우)
+                            # ★★★ 좌우 레이아웃으로 변경 ★★★
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.subheader("📈 양정(Head) 유효성 검증")
+                                display_validation_output(model, head_results, "양정", df_r, df_d, m_r, m_d, q_col_total, q_d, h_col_total, h_d, test_id_col_d)
+                            with col2:
+                                if power_cols_exist:
+                                    st.subheader("⚡ 축동력(Power) 유효성 검증")
+                                    display_validation_output(model, power_results, "축동력", df_r, df_d, m_r, m_d, q_col_total, q_d, k_col_total, k_d, test_id_col_d)
+                        
+                        # ★★★ 표준성능(제안) 곡선도 추가 ★★★
+                        st.markdown("---"); st.header("📊 표준성능 곡선 제안 (Reference vs. 실측 평균)")
+                        fig_col1, fig_col2 = st.columns(2)
+                        with fig_col1:
+                            st.subheader("Q-H Curve (양정)")
+                            fig_h_proposal = go.Figure()
+                            for model in models_to_validate:
+                                if model in head_results:
+                                    summary_df = head_results[model]['summary']
+                                    pd.to_numeric(summary_df['평균'], errors='coerce')
+                                    fig_h_proposal.add_trace(go.Scatter(x=summary_df['검증 유량(Q)'], y=summary_df['평균'], mode='lines', name=f'{model} (제안)'))
+                                    model_r_df = df_r[df_r[m_r] == model].sort_values(q_col_total)
+                                    fig_h_proposal.add_trace(go.Scatter(x=model_r_df[q_col_total], y=model_r_df[h_col_total], mode='lines', name=f'{model} (기존)', line=dict(dash='dot')))
+                            st.plotly_chart(fig_h_proposal, use_container_width=True)
+                        with fig_col2:
                             if power_cols_exist:
-                                st.subheader("⚡ 축동력(Power) 유효성 검증")
-                                display_validation_output(model, power_results, "축동력", df_r, df_d, m_r, m_d, q_col_total, q_d, k_col_total, k_d, test_id_col_d)
+                                st.subheader("Q-kW Curve (축동력)")
+                                fig_k_proposal = go.Figure()
+                                for model in models_to_validate:
+                                    if model in power_results:
+                                        summary_df = power_results[model]['summary']
+                                        pd.to_numeric(summary_df['평균'], errors='coerce')
+                                        fig_k_proposal.add_trace(go.Scatter(x=summary_df['검증 유량(Q)'], y=summary_df['평균'], mode='lines', name=f'{model} (제안)'))
+                                        model_r_df = df_r[df_r[m_r] == model].sort_values(q_col_total)
+                                        fig_k_proposal.add_trace(go.Scatter(x=model_r_df[q_col_total], y=model_r_df[k_col_total], mode='lines', name=f'{model} (기존)', line=dict(dash='dot')))
+                                st.plotly_chart(fig_k_proposal, use_container_width=True)
 
 else:
     st.info("시작하려면 Excel 파일을 업로드하세요.")
