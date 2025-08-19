@@ -6,8 +6,8 @@ import numpy as np
 from scipy.stats import t
 
 # 페이지 기본 설정
-st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v23.0", layout="wide")
-st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v23.0")
+st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v24.0", layout="wide")
+st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v24.0")
 
 # --- 모든 유틸리티 및 분석 함수들은 이전과 동일 ---
 # ... (get_best_match_column, calculate_efficiency, load_sheet, process_data, ... , perform_validation_analysis)
@@ -175,6 +175,7 @@ def perform_validation_analysis(df_r, df_d, m_r, m_d, q_r, h_r, q_d, h_d, test_i
         }
             
     return all_results
+
 # --- 메인 애플리케이션 로직 ---
 
 uploaded_file = st.file_uploader("Excel 파일 업로드 (.xlsx 또는 .xlsm)", type=["xlsx", "xlsm"])
@@ -188,9 +189,8 @@ if uploaded_file:
     if df_r_orig.empty:
         st.error("오류: 'reference data' 시트를 찾을 수 없거나 '모델명' 관련 컬럼이 없습니다. 파일을 확인해주세요.")
     else:
-        # 사이드바 컬럼 선택 UI
+        # 사이드바
         st.sidebar.title("⚙️ 분석 설정")
-        # ... (사이드바 로직은 이전과 동일)
         st.sidebar.markdown("### Total 탭 & 운전점 분석 컬럼 지정")
         
         all_columns_r = df_r_orig.columns.tolist()
@@ -206,21 +206,15 @@ if uploaded_file:
         h_col_total = st.sidebar.selectbox("양정 (Head) 컬럼", all_columns_r, index=safe_get_index(all_columns_r, h_auto_r))
         k_col_total = st.sidebar.selectbox("축동력 (Power) 컬럼", all_columns_r, index=safe_get_index(all_columns_r, k_auto_r))
         
+        # 컬럼명 감지
         q_c, h_c, k_c = (get_best_match_column(df_c_orig, ["토출량", "유량"]), get_best_match_column(df_c_orig, ["토출양정", "전양정"]), get_best_match_column(df_c_orig, ["축동력"]))
         q_d, h_d, k_d = (get_best_match_column(df_d_orig, ["토출량", "유량"]), get_best_match_column(df_d_orig, ["토출양정", "전양정"]), get_best_match_column(df_d_orig, ["축동력"]))
         test_id_col_d = get_best_match_column(df_d_orig, ["시험번호", "Test No", "Test ID"])
 
-        # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-        # ★★★  Deviation 데이터 전처리 로직 강화 (핵심 수정 부분)  ★★★
-        # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+        # Deviation 데이터 전처리
         if not df_d_orig.empty and test_id_col_d:
-            # 1. 데이터 타입을 문자열로 강제 변환하여 통일
-            df_d_orig[test_id_col_d] = df_d_orig[test_id_col_d].astype(str)
-            # 2. 앞뒤 공백 제거
-            df_d_orig[test_id_col_d] = df_d_orig[test_id_col_d].str.strip()
-            # 3. 비어있는 문자열('')과 'nan' 문자열을 실제 NaN으로 교체
+            df_d_orig[test_id_col_d] = df_d_orig[test_id_col_d].astype(str).str.strip()
             df_d_orig[test_id_col_d].replace(['', 'nan'], np.nan, inplace=True)
-            # 4. 최종적으로 ffill 수행
             df_d_orig[test_id_col_d] = df_d_orig[test_id_col_d].ffill()
 
         # 정제된 데이터프레임 생성
@@ -228,12 +222,11 @@ if uploaded_file:
         df_c = process_data(df_c_orig, q_c, h_c, k_c)
         df_d = process_data(df_d_orig, q_d, h_d, k_d)
         
-        # 탭 생성 및 화면 표시 (이하 로직은 이전과 동일)
+        # 탭 생성 (이하 로직은 이전과 동일)
         tab_list = ["Total", "Reference", "Catalog", "Deviation", "Validation"]
         tabs = st.tabs(tab_list)
 
         with tabs[0]: # Total 탭
-            # ... (이전과 동일)
             st.subheader("📊 Total - 통합 곡선 및 운전점 분석")
             df_f = render_filters(df_r, m_r, "total")
             models = df_f[m_r].unique().tolist() if m_r and not df_f.empty else []
@@ -293,7 +286,6 @@ if uploaded_file:
         
         for idx, sheet_name in enumerate(["Reference", "Catalog", "Deviation"]):
             with tabs[idx+1]:
-                # ... (이전과 동일)
                 st.subheader(f"📊 {sheet_name} Data")
                 df, mcol, df_orig = (df_r, m_r, df_r_orig) if sheet_name == "Reference" else \
                                   (df_c, m_c, df_c_orig) if sheet_name == "Catalog" else \
@@ -322,7 +314,6 @@ if uploaded_file:
                 st.markdown("#### 데이터 확인"); st.dataframe(df_f_tab.set_index(mcol), use_container_width=True)
 
         with tabs[4]: # Validation 탭
-            # ... (이전과 동일)
             st.subheader("🔬 Reference Data 통계적 유효성 검증")
             
             if df_d_orig.empty or test_id_col_d is None:
@@ -366,20 +357,39 @@ if uploaded_file:
                                 fig_main = go.Figure()
                                 numeric_cols = ["검증 유량(Q)", "기준 양정(H)", "95% CI 하한", "95% CI 상한"]
                                 for col in numeric_cols: model_summary_df[col] = pd.to_numeric(model_summary_df[col], errors='coerce')
+                                
+                                # 95% 신뢰구간
                                 fig_main.add_trace(go.Scatter(x=model_summary_df['검증 유량(Q)'], y=model_summary_df['95% CI 상한'], fill=None, mode='lines', line_color='rgba(0,100,80,0.2)', name='95% CI 상한'))
                                 fig_main.add_trace(go.Scatter(x=model_summary_df['검증 유량(Q)'], y=model_summary_df['95% CI 하한'], fill='tonexty', mode='lines', line_color='rgba(0,100,80,0.2)', name='95% CI 하한'))
+                                
+                                # 개별 시험 데이터
                                 model_d_df_vis = df_d[df_d[m_d] == model]; test_ids_vis = model_d_df_vis[test_id_col_d].unique()
                                 for test_id in test_ids_vis:
                                     test_df_vis = model_d_df_vis[model_d_df_vis[test_id_col_d] == test_id].sort_values(by=q_d)
                                     fig_main.add_trace(go.Scatter(x=test_df_vis[q_d], y=test_df_vis[h_d], mode='lines', line=dict(width=1, color='grey'), name=f'시험 {test_id}', opacity=0.5, showlegend=False))
+                                
+                                # Reference 데이터
                                 model_r_df_vis = df_r[df_r[m_r] == model].sort_values(by=q_col_total)
                                 fig_main.add_trace(go.Scatter(x=model_r_df_vis[q_col_total], y=model_r_df_vis[h_col_total], mode='lines+markers', line=dict(color='blue', width=3), name='Reference Curve'))
+                                
+                                # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+                                # ★★★   요청 기능: 양정 상/하한선 추가 (+/- 5%)   ★★★
+                                # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+                                upper_limit = model_summary_df['기준 양정(H)'] * 1.05
+                                lower_limit = model_summary_df['기준 양정(H)'] * 0.95
+                                
+                                fig_main.add_trace(go.Scatter(x=model_summary_df['검증 유량(Q)'], y=upper_limit, mode='lines', name='양정 상한 (+5%)', line=dict(color='orange', dash='dash')))
+                                fig_main.add_trace(go.Scatter(x=model_summary_df['검증 유량(Q)'], y=lower_limit, mode='lines', name='양정 하한 (-5%)', line=dict(color='orange', dash='dash')))
+
+                                # 유효성 검증 포인트
                                 valid_points = model_summary_df[model_summary_df['유효성'] == '✅ 유효']; invalid_points = model_summary_df[model_summary_df['유효성'] == '❌ 벗어남']
                                 fig_main.add_trace(go.Scatter(x=valid_points['검증 유량(Q)'], y=valid_points['기준 양정(H)'], mode='markers', marker=dict(color='green', size=10, symbol='circle'), name='유효 포인트'))
                                 fig_main.add_trace(go.Scatter(x=invalid_points['검증 유량(Q)'], y=invalid_points['기준 양정(H)'], mode='markers', marker=dict(color='red', size=10, symbol='x'), name='벗어남 포인트'))
+                                
                                 st.plotly_chart(fig_main, use_container_width=True)
 
                                 with st.expander("검증 유량 지점별 데이터 분포표 보기"):
+                                    # ... (이전과 동일)
                                     cols = st.columns(5)
                                     col_idx = 0
                                     for idx, row in model_summary_df.iterrows():
