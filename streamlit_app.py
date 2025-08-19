@@ -6,10 +6,11 @@ import numpy as np
 from scipy.stats import t
 
 # 페이지 기본 설정
-st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v22.0", layout="wide")
-st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v22.0")
+st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v23.0", layout="wide")
+st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v23.0")
 
-# --- 유틸리티 함수들 ---
+# --- 모든 유틸리티 및 분석 함수들은 이전과 동일 ---
+# ... (get_best_match_column, calculate_efficiency, load_sheet, process_data, ... , perform_validation_analysis)
 SERIES_ORDER = ["XRF3", "XRF5", "XRF10", "XRF15", "XRF20", "XRF32", "XRF45", "XRF64", "XRF95", "XRF125", "XRF155", "XRF185", "XRF215", "XRF255"]
 
 def get_best_match_column(df, names):
@@ -52,7 +53,6 @@ def process_data(df, q_col, h_col, k_col):
             temp_df[col] = pd.to_numeric(temp_df[col])
     return calculate_efficiency(temp_df, q_col, h_col, k_col)
 
-# --- 분석 및 시각화 함수들 ---
 def analyze_operating_point(df, models, target_q, target_h, m_col, q_col, h_col, k_col):
     if target_q <= 0 or target_h <= 0: return pd.DataFrame()
     results = []
@@ -166,7 +166,7 @@ def perform_validation_analysis(df_r, df_d, m_r, m_d, q_r, h_r, q_d, h_d, test_i
                 "모델명": model, "검증 유량(Q)": f"{q:.2f}", "기준 양정(H)": f"{ref_h[i]:.2f}",
                 "시험 횟수(n)": n, "평균": f"{mean_h:.2f}", "표준편차": f"{std_dev:.2f}",
                 "95% CI 하한": f"{ci_lower:.2f}", "95% CI 상한": f"{ci_upper:.2f}", "유효성": is_valid,
-                "_original_q": q # ★★★ 버그 수정을 위해 원본 Q값 저장 ★★★
+                "_original_q": q
             })
         
         all_results[model] = {
@@ -175,14 +175,12 @@ def perform_validation_analysis(df_r, df_d, m_r, m_d, q_r, h_r, q_d, h_d, test_i
         }
             
     return all_results
-
-
 # --- 메인 애플리케이션 로직 ---
 
 uploaded_file = st.file_uploader("Excel 파일 업로드 (.xlsx 또는 .xlsm)", type=["xlsx", "xlsm"])
 
 if uploaded_file:
-    # 데이터 로드 및 전처리 부분은 기존과 동일
+    # 데이터 로드
     m_r, df_r_orig = load_sheet(uploaded_file, "reference data")
     m_c, df_c_orig = load_sheet(uploaded_file, "catalog data")
     m_d, df_d_orig = load_sheet(uploaded_file, "deviation data")
@@ -190,7 +188,9 @@ if uploaded_file:
     if df_r_orig.empty:
         st.error("오류: 'reference data' 시트를 찾을 수 없거나 '모델명' 관련 컬럼이 없습니다. 파일을 확인해주세요.")
     else:
+        # 사이드바 컬럼 선택 UI
         st.sidebar.title("⚙️ 분석 설정")
+        # ... (사이드바 로직은 이전과 동일)
         st.sidebar.markdown("### Total 탭 & 운전점 분석 컬럼 지정")
         
         all_columns_r = df_r_orig.columns.tolist()
@@ -210,18 +210,30 @@ if uploaded_file:
         q_d, h_d, k_d = (get_best_match_column(df_d_orig, ["토출량", "유량"]), get_best_match_column(df_d_orig, ["토출양정", "전양정"]), get_best_match_column(df_d_orig, ["축동력"]))
         test_id_col_d = get_best_match_column(df_d_orig, ["시험번호", "Test No", "Test ID"])
 
+        # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+        # ★★★  Deviation 데이터 전처리 로직 강화 (핵심 수정 부분)  ★★★
+        # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
         if not df_d_orig.empty and test_id_col_d:
+            # 1. 데이터 타입을 문자열로 강제 변환하여 통일
+            df_d_orig[test_id_col_d] = df_d_orig[test_id_col_d].astype(str)
+            # 2. 앞뒤 공백 제거
+            df_d_orig[test_id_col_d] = df_d_orig[test_id_col_d].str.strip()
+            # 3. 비어있는 문자열('')과 'nan' 문자열을 실제 NaN으로 교체
+            df_d_orig[test_id_col_d].replace(['', 'nan'], np.nan, inplace=True)
+            # 4. 최종적으로 ffill 수행
             df_d_orig[test_id_col_d] = df_d_orig[test_id_col_d].ffill()
 
+        # 정제된 데이터프레임 생성
         df_r = process_data(df_r_orig, q_col_total, h_col_total, k_col_total)
         df_c = process_data(df_c_orig, q_c, h_c, k_c)
         df_d = process_data(df_d_orig, q_d, h_d, k_d)
         
+        # 탭 생성 및 화면 표시 (이하 로직은 이전과 동일)
         tab_list = ["Total", "Reference", "Catalog", "Deviation", "Validation"]
         tabs = st.tabs(tab_list)
 
-        # Total, Reference, Catalog, Deviation 탭은 기존 코드와 동일
         with tabs[0]: # Total 탭
+            # ... (이전과 동일)
             st.subheader("📊 Total - 통합 곡선 및 운전점 분석")
             df_f = render_filters(df_r, m_r, "total")
             models = df_f[m_r].unique().tolist() if m_r and not df_f.empty else []
@@ -281,6 +293,7 @@ if uploaded_file:
         
         for idx, sheet_name in enumerate(["Reference", "Catalog", "Deviation"]):
             with tabs[idx+1]:
+                # ... (이전과 동일)
                 st.subheader(f"📊 {sheet_name} Data")
                 df, mcol, df_orig = (df_r, m_r, df_r_orig) if sheet_name == "Reference" else \
                                   (df_c, m_c, df_c_orig) if sheet_name == "Catalog" else \
@@ -308,15 +321,15 @@ if uploaded_file:
                 if 'Efficiency' in df_f_tab.columns: st.markdown("#### Q-Efficiency (효율)"); fig3 = go.Figure(); add_traces(fig3, df_f_tab, mcol, q_col_tab, 'Efficiency', models_tab, mode, line_style=style); fig3.update_layout(yaxis_title="효율 (%)", yaxis=dict(range=[0, 100])); render_chart(fig3, key=f"{sheet_name}_qe")
                 st.markdown("#### 데이터 확인"); st.dataframe(df_f_tab.set_index(mcol), use_container_width=True)
 
-        # ★★★ Validation 탭 로직 (버그 수정 완료) ★★★
-        with tabs[4]:
+        with tabs[4]: # Validation 탭
+            # ... (이전과 동일)
             st.subheader("🔬 Reference Data 통계적 유효성 검증")
             
             if df_d_orig.empty or test_id_col_d is None:
                 st.warning("유효성 검증을 위해 'deviation data' 시트와 '시험번호' 컬럼이 필요합니다.")
             else:
                 with st.expander("병합 셀 처리된 Deviation 데이터 확인하기"):
-                    st.info(f"'{test_id_col_d}' 컬럼의 빈 칸이 채워졌는지 확인하세요.")
+                    st.info(f"강화된 전처리 로직이 적용되었습니다. '{test_id_col_d}' 컬럼의 데이터가 정확한지 다시 한번 확인해주세요.")
                     st.dataframe(df_d_orig)
 
                 common_models = sorted(list(set(df_r[m_r].unique()) & set(df_d[m_d].unique())))
@@ -346,7 +359,6 @@ if uploaded_file:
                                 model_summary_df = model_data['summary']
                                 model_samples = model_data['samples']
 
-                                # 표시할 때는 원본 q값 컬럼 제외
                                 display_summary = model_summary_df.drop(columns=['_original_q']).set_index('모델명')
                                 st.markdown("#### 분석 결과 요약"); st.dataframe(display_summary, use_container_width=True)
                                 
@@ -370,9 +382,8 @@ if uploaded_file:
                                 with st.expander("검증 유량 지점별 데이터 분포표 보기"):
                                     cols = st.columns(5)
                                     col_idx = 0
-                                    # ★★★★★ 수정된 부분: iterrows()를 사용하여 모든 행을 순회 ★★★★★
                                     for idx, row in model_summary_df.iterrows():
-                                        q_point_original = row['_original_q'] # 원본 float q값으로 조회
+                                        q_point_original = row['_original_q']
                                         samples = model_samples.get(q_point_original, [])
 
                                         if not samples or row['시험 횟수(n)'] < 2: continue
