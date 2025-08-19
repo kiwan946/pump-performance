@@ -6,8 +6,8 @@ import numpy as np
 from scipy.stats import t
 
 # 페이지 기본 설정
-st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v20.0", layout="wide")
-st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v20.0")
+st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v21.0", layout="wide")
+st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v21.0")
 
 # --- 유틸리티 함수들 ---
 SERIES_ORDER = ["XRF3", "XRF5", "XRF10", "XRF15", "XRF20", "XRF32", "XRF45", "XRF64", "XRF95", "XRF125", "XRF155", "XRF185", "XRF215", "XRF255"]
@@ -53,6 +53,7 @@ def process_data(df, q_col, h_col, k_col):
     return calculate_efficiency(temp_df, q_col, h_col, k_col)
 
 # --- 분석 및 시각화 함수들 ---
+# ... (analyze_operating_point, analyze_fire_pump_point, render_filters, add_traces, add_bep_markers, add_guide_lines, render_chart 함수는 기존과 동일)
 def analyze_operating_point(df, models, target_q, target_h, m_col, q_col, h_col, k_col):
     if target_q <= 0 or target_h <= 0: return pd.DataFrame()
     results = []
@@ -124,7 +125,7 @@ def render_chart(fig, key):
     fig.update_layout(dragmode='pan', xaxis=dict(fixedrange=False), yaxis=dict(fixedrange=False), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
     st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displaylogo': False}, key=key)
 
-# ★★★ 신규 검증 분석 함수 (반환값 구조 변경) ★★★
+
 def perform_validation_analysis(df_r, df_d, m_r, m_d, q_r, h_r, q_d, h_d, test_id_col, models_to_validate):
     all_results = {}
     
@@ -182,6 +183,7 @@ def perform_validation_analysis(df_r, df_d, m_r, m_d, q_r, h_r, q_d, h_d, test_i
 uploaded_file = st.file_uploader("Excel 파일 업로드 (.xlsx 또는 .xlsm)", type=["xlsx", "xlsm"])
 
 if uploaded_file:
+    # ... (데이터 로드 및 전처리 부분은 기존과 동일)
     m_r, df_r_orig = load_sheet(uploaded_file, "reference data")
     m_c, df_c_orig = load_sheet(uploaded_file, "catalog data")
     m_d, df_d_orig = load_sheet(uploaded_file, "deviation data")
@@ -209,7 +211,6 @@ if uploaded_file:
         q_d, h_d, k_d = (get_best_match_column(df_d_orig, ["토출량", "유량"]), get_best_match_column(df_d_orig, ["토출양정", "전양정"]), get_best_match_column(df_d_orig, ["축동력"]))
         test_id_col_d = get_best_match_column(df_d_orig, ["시험번호", "Test No", "Test ID"])
 
-        # ★★★★★ 수정된 부분: Deviation 데이터의 병합 셀 처리 ★★★★★
         if not df_d_orig.empty and test_id_col_d:
             df_d_orig[test_id_col_d] = df_d_orig[test_id_col_d].ffill()
 
@@ -220,13 +221,13 @@ if uploaded_file:
         tab_list = ["Total", "Reference", "Catalog", "Deviation", "Validation"]
         tabs = st.tabs(tab_list)
 
+        # Total, Reference, Catalog, Deviation 탭은 기존 코드와 동일
         with tabs[0]: # Total 탭
             st.subheader("📊 Total - 통합 곡선 및 운전점 분석")
             df_f = render_filters(df_r, m_r, "total")
             models = df_f[m_r].unique().tolist() if m_r and not df_f.empty else []
 
             with st.expander("운전점 분석 (Operating Point Analysis)"):
-                # ... (기존 코드와 동일)
                 analysis_mode = st.radio("분석 모드", ["기계", "소방"], key="analysis_mode", horizontal=True)
                 op_col1, op_col2 = st.columns(2)
                 with op_col1: target_q = st.number_input("목표 유량 (Q)", value=0.0, format="%.2f")
@@ -240,7 +241,7 @@ if uploaded_file:
                             else: op_results_df = analyze_operating_point(df_r, models, target_q, target_h, m_r, q_col_total, h_col_total, k_col_total)
                             if not op_results_df.empty: st.success(f"총 {len(op_results_df)}개의 모델이 요구 성능을 만족합니다."); st.dataframe(op_results_df, use_container_width=True)
                             else: st.info("요구 성능을 만족하는 모델을 찾지 못했습니다.")
-            # ... (Total 탭의 나머지 부분은 기존 코드와 동일)
+
             with st.expander("차트 보조선 추가"):
                 g_col1, g_col2, g_col3 = st.columns(3)
                 with g_col1: h_guide_h, v_guide_h = st.number_input("Q-H 수평선", value=0.0), st.number_input("Q-H 수직선", value=0.0)
@@ -278,11 +279,9 @@ if uploaded_file:
             if dev_show and not df_d.empty: add_traces(fig_e, df_d, m_d, q_d, 'Efficiency', models, 'markers')
             add_guide_lines(fig_e, h_guide_e, v_guide_e)
             render_chart(fig_e, "total_qe")
-
-
+        
         for idx, sheet_name in enumerate(["Reference", "Catalog", "Deviation"]):
             with tabs[idx+1]:
-                # ... (기존 코드와 동일)
                 st.subheader(f"📊 {sheet_name} Data")
                 df, mcol, df_orig = (df_r, m_r, df_r_orig) if sheet_name == "Reference" else \
                                   (df_c, m_c, df_c_orig) if sheet_name == "Catalog" else \
@@ -309,15 +308,15 @@ if uploaded_file:
                 if k_col_tab in df_f_tab.columns: st.markdown("#### Q-kW (축동력)"); fig2 = go.Figure(); add_traces(fig2, df_f_tab, mcol, q_col_tab, k_col_tab, models_tab, mode, line_style=style); render_chart(fig2, key=f"{sheet_name}_qk")
                 if 'Efficiency' in df_f_tab.columns: st.markdown("#### Q-Efficiency (효율)"); fig3 = go.Figure(); add_traces(fig3, df_f_tab, mcol, q_col_tab, 'Efficiency', models_tab, mode, line_style=style); fig3.update_layout(yaxis_title="효율 (%)", yaxis=dict(range=[0, 100])); render_chart(fig3, key=f"{sheet_name}_qe")
                 st.markdown("#### 데이터 확인"); st.dataframe(df_f_tab, use_container_width=True)
-        
-        # ★★★ 신규 Validation 탭 로직 (전면 수정) ★★★
+
+
+        # ★★★ Validation 탭 로직 (시각화 부분 수정) ★★★
         with tabs[4]:
             st.subheader("🔬 Reference Data 통계적 유효성 검증")
             
             if df_d_orig.empty or test_id_col_d is None:
                 st.warning("유효성 검증을 위해 'deviation data' 시트와 '시험번호' 컬럼이 필요합니다.")
             else:
-                # ★★★ 신규 기능: 처리된 Deviation 데이터 확인 테이블 (요청 2) ★★★
                 with st.expander("병합 셀 처리된 Deviation 데이터 확인하기"):
                     st.info(f"'{test_id_col_d}' 컬럼의 빈 칸이 채워졌는지 확인하세요.")
                     st.dataframe(df_d_orig)
@@ -344,58 +343,72 @@ if uploaded_file:
                                     st.warning(f"모델 '{model}'에 대한 분석 결과를 찾을 수 없습니다.")
                                     continue
                                 
-                                st.markdown("---")
-                                st.markdown(f"### 모델: {model}")
-                                
+                                st.markdown("---"); st.markdown(f"### 모델: {model}")
                                 model_data = validation_results[model]
                                 model_summary_df = model_data['summary']
                                 model_samples = model_data['samples']
 
-                                st.markdown("#### 분석 결과 요약")
-                                st.dataframe(model_summary_df, use_container_width=True)
-                                
+                                st.markdown("#### 분석 결과 요약"); st.dataframe(model_summary_df, use_container_width=True)
                                 st.markdown("#### 모델별 상세 결과 시각화")
-                                # ... (기존 시각화 코드와 동일, 버그 수정)
-                                fig = go.Figure()
+                                # ... (기존 메인 시각화 코드)
+                                fig_main = go.Figure(); 
                                 numeric_cols = ["검증 유량(Q)", "기준 양정(H)", "95% CI 하한", "95% CI 상한"]
                                 for col in numeric_cols: model_summary_df[col] = pd.to_numeric(model_summary_df[col], errors='coerce')
-                                fig.add_trace(go.Scatter(x=model_summary_df['검증 유량(Q)'], y=model_summary_df['95% CI 상한'], fill=None, mode='lines', line_color='rgba(0,100,80,0.2)', name='95% CI 상한'))
-                                fig.add_trace(go.Scatter(x=model_summary_df['검증 유량(Q)'], y=model_summary_df['95% CI 하한'], fill='tonexty', mode='lines', line_color='rgba(0,100,80,0.2)', name='95% CI 하한'))
-                                model_d_df_vis = df_d[df_d[m_d] == model]
-                                test_ids_vis = model_d_df_vis[test_id_col_d].unique()
+                                fig_main.add_trace(go.Scatter(x=model_summary_df['검증 유량(Q)'], y=model_summary_df['95% CI 상한'], fill=None, mode='lines', line_color='rgba(0,100,80,0.2)', name='95% CI 상한'))
+                                fig_main.add_trace(go.Scatter(x=model_summary_df['검증 유량(Q)'], y=model_summary_df['95% CI 하한'], fill='tonexty', mode='lines', line_color='rgba(0,100,80,0.2)', name='95% CI 하한'))
+                                model_d_df_vis = df_d[df_d[m_d] == model]; test_ids_vis = model_d_df_vis[test_id_col_d].unique()
                                 for test_id in test_ids_vis:
                                     test_df_vis = model_d_df_vis[model_d_df_vis[test_id_col_d] == test_id].sort_values(by=q_d)
-                                    fig.add_trace(go.Scatter(x=test_df_vis[q_d], y=test_df_vis[h_d], mode='lines', line=dict(width=1, color='grey'), name=f'시험 {test_id}', opacity=0.5, showlegend=False))
+                                    fig_main.add_trace(go.Scatter(x=test_df_vis[q_d], y=test_df_vis[h_d], mode='lines', line=dict(width=1, color='grey'), name=f'시험 {test_id}', opacity=0.5, showlegend=False))
                                 model_r_df_vis = df_r[df_r[m_r] == model].sort_values(by=q_col_total)
-                                fig.add_trace(go.Scatter(x=model_r_df_vis[q_col_total], y=model_r_df_vis[h_col_total], mode='lines+markers', line=dict(color='blue', width=3), name='Reference Curve'))
+                                fig_main.add_trace(go.Scatter(x=model_r_df_vis[q_col_total], y=model_r_df_vis[h_col_total], mode='lines+markers', line=dict(color='blue', width=3), name='Reference Curve'))
                                 valid_points = model_summary_df[model_summary_df['유효성'] == '✅ 유효']; invalid_points = model_summary_df[model_summary_df['유효성'] == '❌ 벗어남']
-                                fig.add_trace(go.Scatter(x=valid_points['검증 유량(Q)'], y=valid_points['기준 양정(H)'], mode='markers', marker=dict(color='green', size=10, symbol='circle'), name='유효 포인트'))
-                                fig.add_trace(go.Scatter(x=invalid_points['검증 유량(Q)'], y=invalid_points['기준 양정(H)'], mode='markers', marker=dict(color='red', size=10, symbol='x'), name='벗어남 포인트'))
-                                st.plotly_chart(fig, use_container_width=True)
+                                fig_main.add_trace(go.Scatter(x=valid_points['검증 유량(Q)'], y=valid_points['기준 양정(H)'], mode='markers', marker=dict(color='green', size=10, symbol='circle'), name='유효 포인트'))
+                                fig_main.add_trace(go.Scatter(x=invalid_points['검증 유량(Q)'], y=invalid_points['기준 양정(H)'], mode='markers', marker=dict(color='red', size=10, symbol='x'), name='벗어남 포인트'))
+                                st.plotly_chart(fig_main, use_container_width=True)
 
-                                # ★★★ 신규 기능: 검증 구간별 분포도 (히스토그램) (요청 1) ★★★
-                                with st.expander("검증 유량 지점별 데이터 분포(히스토그램) 보기"):
+                                # ★★★★★ 수정된 부분: 검증 구간별 분포표(Distribution Plot) 및 기초 통계량 ★★★★★
+                                with st.expander("검증 유량 지점별 데이터 분포표 보기"):
                                     cols = st.columns(5)
                                     col_idx = 0
                                     for idx, row in model_summary_df.iterrows():
-                                        q_point = row['검증 유량(Q)']
-                                        ref_h_point = row['기준 양정(H)']
+                                        # 문자열 형식의 숫자를 float으로 변환
+                                        q_point = float(row['검증 유량(Q)'])
+                                        ref_h_point = float(row['기준 양정(H)'])
+                                        mean_h = float(row['평균'])
+                                        std_h = float(row['표준편차'])
+                                        n_samples = int(row['시험 횟수(n)'])
+                                        
                                         samples = model_samples.get(q_point, [])
 
-                                        if not samples: continue
+                                        if not samples or n_samples < 2: continue
 
-                                        fig_hist = go.Figure()
-                                        fig_hist.add_trace(go.Histogram(x=samples, name='시험 데이터 분포'))
-                                        fig_hist.add_vline(x=ref_h_point, line_width=2, line_dash="dash", line_color="red", name="기준 양정")
-                                        
-                                        fig_hist.update_layout(
-                                            title=f"Q = {q_point:.2f} 지점 분포",
-                                            xaxis_title="양정(H)", yaxis_title="빈도",
-                                            height=250, margin=dict(l=20, r=20, t=40, b=20)
-                                        )
-                                        
                                         with cols[col_idx % 5]:
-                                            st.plotly_chart(fig_hist, use_container_width=True)
+                                            st.markdown(f"**Q = {q_point:.2f}**")
+                                            # 기초 통계량 표시
+                                            st.markdown(
+                                                f"<small>평균: {mean_h:.2f} | 표준편차: {std_h:.2f} | n: {n_samples}</small>", 
+                                                unsafe_allow_html=True
+                                            )
+                                            
+                                            # 분포표(Distribution Plot) 생성
+                                            fig_dist = ff.create_distplot(
+                                                [samples], ['시험 데이터'], 
+                                                show_hist=False, 
+                                                show_rug=True
+                                            )
+                                            
+                                            # 기준 양정(Reference H) 및 평균 양정(Mean H) 수직선 추가
+                                            fig_dist.add_vline(x=ref_h_point, line_width=2, line_dash="dash", line_color="red", name="기준 양정")
+                                            fig_dist.add_vline(x=mean_h, line_width=2, line_dash="dot", line_color="blue", name="평균 양정")
+
+                                            fig_dist.update_layout(
+                                                title_text=None,
+                                                xaxis_title="양정(H)", yaxis_title="밀도",
+                                                height=280, margin=dict(l=20, r=20, t=5, b=20),
+                                                showlegend=False
+                                            )
+                                            st.plotly_chart(fig_dist, use_container_width=True, config={'displayModeBar': False})
                                         col_idx += 1
 else:
     st.info("시작하려면 Excel 파일을 업로드하세요.")
