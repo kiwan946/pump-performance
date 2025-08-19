@@ -6,8 +6,8 @@ import numpy as np
 from scipy.stats import t
 
 # 페이지 기본 설정
-st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v21.0", layout="wide")
-st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v21.0")
+st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v22.0", layout="wide")
+st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v22.0")
 
 # --- 유틸리티 함수들 ---
 SERIES_ORDER = ["XRF3", "XRF5", "XRF10", "XRF15", "XRF20", "XRF32", "XRF45", "XRF64", "XRF95", "XRF125", "XRF155", "XRF185", "XRF215", "XRF255"]
@@ -53,7 +53,6 @@ def process_data(df, q_col, h_col, k_col):
     return calculate_efficiency(temp_df, q_col, h_col, k_col)
 
 # --- 분석 및 시각화 함수들 ---
-# ... (analyze_operating_point, analyze_fire_pump_point, render_filters, add_traces, add_bep_markers, add_guide_lines, render_chart 함수는 기존과 동일)
 def analyze_operating_point(df, models, target_q, target_h, m_col, q_col, h_col, k_col):
     if target_q <= 0 or target_h <= 0: return pd.DataFrame()
     results = []
@@ -125,7 +124,6 @@ def render_chart(fig, key):
     fig.update_layout(dragmode='pan', xaxis=dict(fixedrange=False), yaxis=dict(fixedrange=False), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
     st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displaylogo': False}, key=key)
 
-
 def perform_validation_analysis(df_r, df_d, m_r, m_d, q_r, h_r, q_d, h_d, test_id_col, models_to_validate):
     all_results = {}
     
@@ -167,7 +165,8 @@ def perform_validation_analysis(df_r, df_d, m_r, m_d, q_r, h_r, q_d, h_d, test_i
             model_summary.append({
                 "모델명": model, "검증 유량(Q)": f"{q:.2f}", "기준 양정(H)": f"{ref_h[i]:.2f}",
                 "시험 횟수(n)": n, "평균": f"{mean_h:.2f}", "표준편차": f"{std_dev:.2f}",
-                "95% CI 하한": f"{ci_lower:.2f}", "95% CI 상한": f"{ci_upper:.2f}", "유효성": is_valid
+                "95% CI 하한": f"{ci_lower:.2f}", "95% CI 상한": f"{ci_upper:.2f}", "유효성": is_valid,
+                "_original_q": q # ★★★ 버그 수정을 위해 원본 Q값 저장 ★★★
             })
         
         all_results[model] = {
@@ -183,7 +182,7 @@ def perform_validation_analysis(df_r, df_d, m_r, m_d, q_r, h_r, q_d, h_d, test_i
 uploaded_file = st.file_uploader("Excel 파일 업로드 (.xlsx 또는 .xlsm)", type=["xlsx", "xlsm"])
 
 if uploaded_file:
-    # ... (데이터 로드 및 전처리 부분은 기존과 동일)
+    # 데이터 로드 및 전처리 부분은 기존과 동일
     m_r, df_r_orig = load_sheet(uploaded_file, "reference data")
     m_c, df_c_orig = load_sheet(uploaded_file, "catalog data")
     m_d, df_d_orig = load_sheet(uploaded_file, "deviation data")
@@ -239,7 +238,7 @@ if uploaded_file:
                         with st.spinner("선택된 모델들을 분석 중입니다..."):
                             if analysis_mode == "소방": op_results_df = analyze_fire_pump_point(df_r, models, target_q, target_h, m_r, q_col_total, h_col_total, k_col_total)
                             else: op_results_df = analyze_operating_point(df_r, models, target_q, target_h, m_r, q_col_total, h_col_total, k_col_total)
-                            if not op_results_df.empty: st.success(f"총 {len(op_results_df)}개의 모델이 요구 성능을 만족합니다."); st.dataframe(op_results_df, use_container_width=True)
+                            if not op_results_df.empty: st.success(f"총 {len(op_results_df)}개의 모델이 요구 성능을 만족합니다."); st.dataframe(op_results_df.set_index('모델명'), use_container_width=True)
                             else: st.info("요구 성능을 만족하는 모델을 찾지 못했습니다.")
 
             with st.expander("차트 보조선 추가"):
@@ -307,10 +306,9 @@ if uploaded_file:
                 if h_col_tab: st.markdown(f"#### Q-H ({h_col_tab})"); fig1 = go.Figure(); add_traces(fig1, df_f_tab, mcol, q_col_tab, h_col_tab, models_tab, mode, line_style=style); render_chart(fig1, key=f"{sheet_name}_qh")
                 if k_col_tab in df_f_tab.columns: st.markdown("#### Q-kW (축동력)"); fig2 = go.Figure(); add_traces(fig2, df_f_tab, mcol, q_col_tab, k_col_tab, models_tab, mode, line_style=style); render_chart(fig2, key=f"{sheet_name}_qk")
                 if 'Efficiency' in df_f_tab.columns: st.markdown("#### Q-Efficiency (효율)"); fig3 = go.Figure(); add_traces(fig3, df_f_tab, mcol, q_col_tab, 'Efficiency', models_tab, mode, line_style=style); fig3.update_layout(yaxis_title="효율 (%)", yaxis=dict(range=[0, 100])); render_chart(fig3, key=f"{sheet_name}_qe")
-                st.markdown("#### 데이터 확인"); st.dataframe(df_f_tab, use_container_width=True)
+                st.markdown("#### 데이터 확인"); st.dataframe(df_f_tab.set_index(mcol), use_container_width=True)
 
-
-        # ★★★ Validation 탭 로직 (시각화 부분 수정) ★★★
+        # ★★★ Validation 탭 로직 (버그 수정 완료) ★★★
         with tabs[4]:
             st.subheader("🔬 Reference Data 통계적 유효성 검증")
             
@@ -348,10 +346,12 @@ if uploaded_file:
                                 model_summary_df = model_data['summary']
                                 model_samples = model_data['samples']
 
-                                st.markdown("#### 분석 결과 요약"); st.dataframe(model_summary_df, use_container_width=True)
+                                # 표시할 때는 원본 q값 컬럼 제외
+                                display_summary = model_summary_df.drop(columns=['_original_q']).set_index('모델명')
+                                st.markdown("#### 분석 결과 요약"); st.dataframe(display_summary, use_container_width=True)
+                                
                                 st.markdown("#### 모델별 상세 결과 시각화")
-                                # ... (기존 메인 시각화 코드)
-                                fig_main = go.Figure(); 
+                                fig_main = go.Figure()
                                 numeric_cols = ["검증 유량(Q)", "기준 양정(H)", "95% CI 하한", "95% CI 상한"]
                                 for col in numeric_cols: model_summary_df[col] = pd.to_numeric(model_summary_df[col], errors='coerce')
                                 fig_main.add_trace(go.Scatter(x=model_summary_df['검증 유량(Q)'], y=model_summary_df['95% CI 상한'], fill=None, mode='lines', line_color='rgba(0,100,80,0.2)', name='95% CI 상한'))
@@ -367,46 +367,36 @@ if uploaded_file:
                                 fig_main.add_trace(go.Scatter(x=invalid_points['검증 유량(Q)'], y=invalid_points['기준 양정(H)'], mode='markers', marker=dict(color='red', size=10, symbol='x'), name='벗어남 포인트'))
                                 st.plotly_chart(fig_main, use_container_width=True)
 
-                                # ★★★★★ 수정된 부분: 검증 구간별 분포표(Distribution Plot) 및 기초 통계량 ★★★★★
                                 with st.expander("검증 유량 지점별 데이터 분포표 보기"):
                                     cols = st.columns(5)
                                     col_idx = 0
+                                    # ★★★★★ 수정된 부분: iterrows()를 사용하여 모든 행을 순회 ★★★★★
                                     for idx, row in model_summary_df.iterrows():
-                                        # 문자열 형식의 숫자를 float으로 변환
-                                        q_point = float(row['검증 유량(Q)'])
+                                        q_point_original = row['_original_q'] # 원본 float q값으로 조회
+                                        samples = model_samples.get(q_point_original, [])
+
+                                        if not samples or row['시험 횟수(n)'] < 2: continue
+                                        
+                                        q_point_str = row['검증 유량(Q)']
                                         ref_h_point = float(row['기준 양정(H)'])
                                         mean_h = float(row['평균'])
                                         std_h = float(row['표준편차'])
                                         n_samples = int(row['시험 횟수(n)'])
-                                        
-                                        samples = model_samples.get(q_point, [])
-
-                                        if not samples or n_samples < 2: continue
 
                                         with cols[col_idx % 5]:
-                                            st.markdown(f"**Q = {q_point:.2f}**")
-                                            # 기초 통계량 표시
+                                            st.markdown(f"**Q = {q_point_str}**")
                                             st.markdown(
                                                 f"<small>평균: {mean_h:.2f} | 표준편차: {std_h:.2f} | n: {n_samples}</small>", 
                                                 unsafe_allow_html=True
                                             )
                                             
-                                            # 분포표(Distribution Plot) 생성
-                                            fig_dist = ff.create_distplot(
-                                                [samples], ['시험 데이터'], 
-                                                show_hist=False, 
-                                                show_rug=True
-                                            )
-                                            
-                                            # 기준 양정(Reference H) 및 평균 양정(Mean H) 수직선 추가
+                                            fig_dist = ff.create_distplot([samples], ['시험 데이터'], show_hist=False, show_rug=True)
                                             fig_dist.add_vline(x=ref_h_point, line_width=2, line_dash="dash", line_color="red", name="기준 양정")
                                             fig_dist.add_vline(x=mean_h, line_width=2, line_dash="dot", line_color="blue", name="평균 양정")
 
                                             fig_dist.update_layout(
-                                                title_text=None,
-                                                xaxis_title="양정(H)", yaxis_title="밀도",
-                                                height=280, margin=dict(l=20, r=20, t=5, b=20),
-                                                showlegend=False
+                                                title_text=None, xaxis_title="양정(H)", yaxis_title="밀도",
+                                                height=280, margin=dict(l=20, r=20, t=5, b=20), showlegend=False
                                             )
                                             st.plotly_chart(fig_dist, use_container_width=True, config={'displayModeBar': False})
                                         col_idx += 1
