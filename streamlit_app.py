@@ -6,8 +6,8 @@ import numpy as np
 from scipy.stats import t
 
 # 페이지 기본 설정
-st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v26.0", layout="wide")
-st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v26.0")
+st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v27.0", layout="wide")
+st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v27.0")
 
 # --- 모든 유틸리티 및 분석 함수들은 이전과 동일 ---
 SERIES_ORDER = ["XRF3", "XRF5", "XRF10", "XRF15", "XRF20", "XRF32", "XRF45", "XRF64", "XRF95", "XRF125", "XRF155", "XRF185", "XRF215", "XRF255"]
@@ -173,6 +173,9 @@ def perform_validation_analysis(df_r, df_d, m_r, m_d, q_r, q_d, y_r_col, y_d_col
         all_results[model] = { 'summary': pd.DataFrame(model_summary), 'samples': interpolated_y_samples }
     return all_results
 
+# ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+# ★★★ 시각화 함수 수정 (분포표 레이아웃 변경) ★★★
+# ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 def display_validation_output(model, validation_data, analysis_type, df_r, df_d, m_r, m_d, q_r, q_d, y_r_col, y_d_col, test_id_col):
     if model not in validation_data or validation_data[model]['summary'].empty:
         st.warning(f"'{model}' 모델에 대한 {analysis_type} 분석 결과가 없습니다.")
@@ -216,23 +219,31 @@ def display_validation_output(model, validation_data, analysis_type, df_r, df_d,
     fig_main.update_layout(yaxis_title=analysis_type)
     st.plotly_chart(fig_main, use_container_width=True)
 
+    # 데이터 분포표
     with st.expander(f"검증 유량 지점별 {analysis_type} 데이터 분포표 보기"):
-        cols = st.columns(5)
-        col_idx = 0
+        # st.columns(5)를 제거하여 한 줄에 하나씩 표시
         for idx, row in model_summary_df.iterrows():
             q_point_original = row['_original_q']
             samples = model_samples.get(q_point_original, [])
             if not samples or row['시험 횟수(n)'] < 2: continue
-            q_point_str, ref_y_point, mean_y, std_y, n_samples = row['검증 유량(Q)'], float(row[base_col_name]), float(row['평균']), float(row['표준편차']), int(row['시험 횟수(n)'])
-            with cols[col_idx % 5]:
-                st.markdown(f"**Q = {q_point_str}**")
-                st.markdown(f"<small>평균: {mean_y:.2f} | 표준편차: {std_y:.2f} | n: {n_samples}</small>", unsafe_allow_html=True)
-                fig_dist = ff.create_distplot([samples], ['시험 데이터'], show_hist=False, show_rug=True)
-                fig_dist.add_vline(x=ref_y_point, line_width=2, line_dash="dash", line_color="red")
-                fig_dist.add_vline(x=mean_y, line_width=2, line_dash="dot", line_color="blue")
-                fig_dist.update_layout(title_text=None, xaxis_title=analysis_type, yaxis_title="밀도", height=280, margin=dict(l=20,r=20,t=5,b=20), showlegend=False)
-                st.plotly_chart(fig_dist, use_container_width=True, config={'displayModeBar': False})
-            col_idx += 1
+            
+            q_point_str = row['검증 유량(Q)']
+            ref_y_point = float(row[base_col_name])
+            mean_y = float(row['평균'])
+            std_y = float(row['표준편차'])
+            n_samples = int(row['시험 횟수(n)'])
+
+            # 각 분포표를 독립적으로 표시
+            st.markdown(f"**Q = {q_point_str}**")
+            st.markdown(f"<small>평균: {mean_y:.2f} | 표준편차: {std_y:.2f} | n: {n_samples}</small>", unsafe_allow_html=True)
+            
+            fig_dist = ff.create_distplot([samples], ['시험 데이터'], show_hist=False, show_rug=True)
+            fig_dist.add_vline(x=ref_y_point, line_width=2, line_dash="dash", line_color="red")
+            fig_dist.add_vline(x=mean_y, line_width=2, line_dash="dot", line_color="blue")
+            
+            fig_dist.update_layout(title_text=None, xaxis_title=analysis_type, yaxis_title="밀도", height=300, margin=dict(l=20,r=20,t=5,b=20), showlegend=False)
+            st.plotly_chart(fig_dist, use_container_width=True, config={'displayModeBar': False})
+            st.markdown("---") # 구분선 추가
 
 # --- 메인 애플리케이션 로직 ---
 uploaded_file = st.file_uploader("Excel 파일 업로드 (.xlsx 또는 .xlsm)", type=["xlsx", "xlsm"])
@@ -279,7 +290,6 @@ if uploaded_file:
                         
                         for model in models_to_validate:
                             st.markdown("---"); st.markdown(f"### 모델: {model}")
-                            # ★★★ 좌우 레이아웃으로 변경 ★★★
                             col1, col2 = st.columns(2)
                             with col1:
                                 st.subheader("📈 양정(Head) 유효성 검증")
@@ -289,31 +299,30 @@ if uploaded_file:
                                     st.subheader("⚡ 축동력(Power) 유효성 검증")
                                     display_validation_output(model, power_results, "축동력", df_r, df_d, m_r, m_d, q_col_total, q_d, k_col_total, k_d, test_id_col_d)
                         
-                        # ★★★ 표준성능(제안) 곡선도 추가 ★★★
                         st.markdown("---"); st.header("📊 표준성능 곡선 제안 (Reference vs. 실측 평균)")
                         fig_col1, fig_col2 = st.columns(2)
                         with fig_col1:
                             st.subheader("Q-H Curve (양정)")
                             fig_h_proposal = go.Figure()
                             for model in models_to_validate:
-                                if model in head_results:
+                                if model in head_results and not head_results[model]['summary'].empty:
                                     summary_df = head_results[model]['summary']
-                                    pd.to_numeric(summary_df['평균'], errors='coerce')
-                                    fig_h_proposal.add_trace(go.Scatter(x=summary_df['검증 유량(Q)'], y=summary_df['평균'], mode='lines', name=f'{model} (제안)'))
+                                    summary_df['평균'] = pd.to_numeric(summary_df['평균'], errors='coerce')
+                                    fig_h_proposal.add_trace(go.Scatter(x=summary_df['검증 유량(Q)'], y=summary_df['평균'], mode='lines+markers', name=f'{model} (제안)'))
                                     model_r_df = df_r[df_r[m_r] == model].sort_values(q_col_total)
-                                    fig_h_proposal.add_trace(go.Scatter(x=model_r_df[q_col_total], y=model_r_df[h_col_total], mode='lines', name=f'{model} (기존)', line=dict(dash='dot')))
+                                    fig_h_proposal.add_trace(go.Scatter(x=model_r_df[q_col_total], y=model_r_df[h_col_total], mode='lines', name=f'{model} (기존)', line=dict(dash='dot'), opacity=0.7))
                             st.plotly_chart(fig_h_proposal, use_container_width=True)
                         with fig_col2:
                             if power_cols_exist:
                                 st.subheader("Q-kW Curve (축동력)")
                                 fig_k_proposal = go.Figure()
                                 for model in models_to_validate:
-                                    if model in power_results:
+                                    if model in power_results and not power_results[model]['summary'].empty:
                                         summary_df = power_results[model]['summary']
-                                        pd.to_numeric(summary_df['평균'], errors='coerce')
-                                        fig_k_proposal.add_trace(go.Scatter(x=summary_df['검증 유량(Q)'], y=summary_df['평균'], mode='lines', name=f'{model} (제안)'))
+                                        summary_df['평균'] = pd.to_numeric(summary_df['평균'], errors='coerce')
+                                        fig_k_proposal.add_trace(go.Scatter(x=summary_df['검증 유량(Q)'], y=summary_df['평균'], mode='lines+markers', name=f'{model} (제안)'))
                                         model_r_df = df_r[df_r[m_r] == model].sort_values(q_col_total)
-                                        fig_k_proposal.add_trace(go.Scatter(x=model_r_df[q_col_total], y=model_r_df[k_col_total], mode='lines', name=f'{model} (기존)', line=dict(dash='dot')))
+                                        fig_k_proposal.add_trace(go.Scatter(x=model_r_df[q_col_total], y=model_r_df[k_col_total], mode='lines', name=f'{model} (기존)', line=dict(dash='dot'), opacity=0.7))
                                 st.plotly_chart(fig_k_proposal, use_container_width=True)
 
 else:
