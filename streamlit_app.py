@@ -6,8 +6,8 @@ import numpy as np
 from scipy.stats import t
 
 # 페이지 기본 설정
-st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v28.0", layout="wide")
-st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v28.0")
+st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v28.1", layout="wide")
+st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v28.1")
 
 # --- 유틸리티 함수들 ---
 SERIES_ORDER = ["XRF3", "XRF5", "XRF10", "XRF15", "XRF20", "XRF32", "XRF45", "XRF64", "XRF95", "XRF125", "XRF155", "XRF185", "XRF215", "XRF255"]
@@ -57,59 +57,42 @@ def analyze_operating_point(df, models, target_q, target_h, m_col, q_col, h_col,
     if target_h <= 0: return pd.DataFrame()
     results = []
 
-    # 요청 1: 목표 유량이 0일 때 체절 양정 비교
     if target_q == 0:
         for model in models:
             model_df = df[df[m_col] == model].sort_values(q_col)
             if model_df.empty: continue
-            
             churn_h = model_df.iloc[0][h_col]
             if churn_h >= target_h:
                 churn_kw = model_df.iloc[0][k_col] if k_col and k_col in model_df.columns else np.nan
                 churn_eff = np.interp(0, model_df[q_col], model_df['Efficiency']) if 'Efficiency' in model_df.columns else 0
-                results.append({
-                    "모델명": model, "요구 유량": "0 (체절)", "요구 양정": target_h,
-                    "예상 양정": f"{churn_h:.2f}", "예상 동력(kW)": f"{churn_kw:.2f}",
-                    "예상 효율(%)": f"{churn_eff:.2f}", "선정 가능": "✅"
-                })
+                results.append({"모델명": model, "요구 유량": "0 (체절)", "요구 양정": target_h, "예상 양정": f"{churn_h:.2f}", "예상 동력(kW)": f"{churn_kw:.2f}", "예상 효율(%)": f"{churn_eff:.2f}", "선정 가능": "✅"})
         return pd.DataFrame(results)
 
-    # 기존 로직: 목표 유량이 0보다 클 때
     for model in models:
         model_df = df[df[m_col] == model].sort_values(q_col)
         if len(model_df) < 2 or not (model_df[q_col].min() <= target_q <= model_df[q_col].max()): continue
-
         interp_h = np.interp(target_q, model_df[q_col], model_df[h_col])
         
-        # 1. 완벽하게 만족하는 경우
         if interp_h >= target_h:
             interp_kw = np.interp(target_q, model_df[q_col], model_df[k_col]) if k_col and k_col in model_df.columns else np.nan
             interp_eff = np.interp(target_q, model_df[q_col], model_df['Efficiency']) if 'Efficiency' in model_df.columns else np.nan
             results.append({"모델명": model, "요구 유량": target_q, "요구 양정": target_h, "예상 양정": f"{interp_h:.2f}", "예상 동력(kW)": f"{interp_kw:.2f}", "예상 효율(%)": f"{interp_eff:.2f}", "선정 가능": "✅"})
-        
-        # 2. 요청 2: 조건부로 만족하는 경우 (유량 5% 이내 보정)
         else:
-            # 역산: 목표 양정을 만족하는 유량(q_required) 찾기
-            # np.interp를 역으로 사용하기 위해 양정(y)을 오름차순으로 정렬해야 함
-            sorted_h = model_df[h_col].sort_values().unique()
-            sorted_q = model_df.sort_values(h_col)[q_col].unique()
+            # 역산 로직 수정: np.interp를 위해 y축(h_col)을 오름차순으로 만들어야 함
+            # 일반적인 펌프 곡선은 Q가 증가하면 H가 감소하므로, H와 Q 배열을 모두 뒤집으면 H가 오름차순이 됨
+            h_values_rev = model_df[h_col].values[::-1]
+            q_values_rev = model_df[q_col].values[::-1]
 
-            if target_h <= sorted_h.max() and target_h >= sorted_h.min():
-                q_required = np.interp(target_h, sorted_h, sorted_q)
-
-                # 보정된 유량이 0~5% 범위 내에 있는지 확인
+            if target_h <= model_df[h_col].max() and target_h >= model_df[h_col].min():
+                q_required = np.interp(target_h, h_values_rev, q_values_rev)
                 if 0.95 * target_q <= q_required < target_q:
                     correction_pct = (1 - (q_required / target_q)) * 100
                     status_text = f"유량 {correction_pct:.1f}% 보정 전제 사용 가능"
-                    
-                    # 보정된 유량에서의 동력, 효율 계산
                     interp_kw_corr = np.interp(q_required, model_df[q_col], model_df[k_col]) if k_col and k_col in model_df.columns else np.nan
                     interp_eff_corr = np.interp(q_required, model_df[q_col], model_df['Efficiency']) if 'Efficiency' in model_df.columns else np.nan
-                    
                     results.append({"모델명": model, "요구 유량": target_q, "요구 양정": target_h, "예상 양정": f"{target_h:.2f} (at Q={q_required:.2f})", "예상 동력(kW)": f"{interp_kw_corr:.2f}", "예상 효율(%)": f"{interp_eff_corr:.2f}", "선정 가능": status_text})
     
     return pd.DataFrame(results)
-
 
 def analyze_fire_pump_point(df, models, target_q, target_h, m_col, q_col, h_col, k_col):
     if target_q <= 0 or target_h <= 0: return pd.DataFrame()
@@ -117,33 +100,27 @@ def analyze_fire_pump_point(df, models, target_q, target_h, m_col, q_col, h_col,
     for model in models:
         model_df = df[df[m_col] == model].sort_values(q_col)
         if len(model_df) < 2: continue
-
-        # 1. 정격점(100% Q) 성능 확인
-        interp_h_rated = np.interp(target_q, model_df[q_col], model_df[h_col], left=np.nan, right=np.nan)
         
-        # 2. 체절점(0% Q) 및 최대운전점(150% Q) 성능 계산
+        interp_h_rated = np.interp(target_q, model_df[q_col], model_df[h_col], left=np.nan, right=np.nan)
         h_churn = model_df.iloc[0][h_col]
         q_overload = 1.5 * target_q
         interp_h_overload = np.interp(q_overload, model_df[q_col], model_df[h_col], left=np.nan, right=np.nan)
 
-        # 3. 소방 성능 조건 판별
-        # 3.1 완벽하게 만족하는 경우
         if not np.isnan(interp_h_rated) and interp_h_rated >= target_h:
             cond1_ok = h_churn <= (1.40 * target_h)
             cond2_ok = (not np.isnan(interp_h_overload)) and (interp_h_overload >= (0.65 * target_h))
             if cond1_ok and cond2_ok:
                 interp_kw = np.interp(target_q, model_df[q_col], model_df[k_col]) if k_col and k_col in model_df.columns else np.nan
                 results.append({"모델명": model, "정격 예상 양정": f"{interp_h_rated:.2f}", "체절 양정 (≤{1.4*target_h:.2f})": f"{h_churn:.2f}", "최대운전 양정 (≥{0.65*target_h:.2f})": f"{interp_h_overload:.2f}", "예상 동력(kW)": f"{interp_kw:.2f}", "선정 가능": "✅"})
-                continue # 다음 모델로
+                continue
 
-        # 3.2 조건부로 만족하는 경우 (유량 보정)
-        sorted_h = model_df[h_col].sort_values().unique()
-        sorted_q = model_df.sort_values(h_col)[q_col].unique()
+        # 역산 로직 수정
+        h_values_rev = model_df[h_col].values[::-1]
+        q_values_rev = model_df[q_col].values[::-1]
 
-        if target_h <= sorted_h.max() and target_h >= sorted_h.min():
-            q_required = np.interp(target_h, sorted_h, sorted_q)
+        if target_h <= model_df[h_col].max() and target_h >= model_df[h_col].min():
+            q_required = np.interp(target_h, h_values_rev, q_values_rev)
             if 0.95 * target_q <= q_required < target_q:
-                # 보정된 유량(q_required)을 기준으로 최대 운전점 재계산
                 q_overload_corr = 1.5 * q_required
                 interp_h_overload_corr = np.interp(q_overload_corr, model_df[q_col], model_df[h_col], left=np.nan, right=np.nan)
                 
@@ -157,7 +134,7 @@ def analyze_fire_pump_point(df, models, target_q, target_h, m_col, q_col, h_col,
                     results.append({"모델명": model, "정격 예상 양정": f"{target_h:.2f} (at Q={q_required:.2f})", "체절 양정 (≤{1.4*target_h:.2f})": f"{h_churn:.2f}", "최대운전 양정 (≥{0.65*target_h:.2f})": f"{interp_h_overload_corr:.2f}", "예상 동력(kW)": f"{interp_kw_corr:.2f}", "선정 가능": status_text})
     
     return pd.DataFrame(results)
-    
+
 # ... (이하 모든 함수는 이전 버전과 동일합니다) ...
 def render_filters(df, mcol, prefix):
     if df is None or df.empty or mcol is None or 'Series' not in df.columns:
@@ -308,6 +285,7 @@ def display_validation_output(model, validation_data, analysis_type, df_r, df_d,
             st.markdown("---")
 
 # --- 메인 애플리케이션 로직 ---
+# ... (이하 로직은 이전 버전과 동일)
 uploaded_file = st.file_uploader("Excel 파일 업로드 (.xlsx 또는 .xlsm)", type=["xlsx", "xlsm"])
 if uploaded_file:
     m_r, df_r_orig = load_sheet(uploaded_file, "reference data"); m_c, df_c_orig = load_sheet(uploaded_file, "catalog data"); m_d, df_d_orig = load_sheet(uploaded_file, "deviation data")
