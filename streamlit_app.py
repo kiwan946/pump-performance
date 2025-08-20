@@ -6,10 +6,10 @@ import numpy as np
 from scipy.stats import t
 
 # 페이지 기본 설정
-st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v28.1", layout="wide")
-st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v28.1")
+st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v28.2", layout="wide")
+st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v28.2")
 
-# --- 유틸리티 함수들 ---
+# --- 유틸리티 및 기본 분석 함수들 (이전과 동일) ---
 SERIES_ORDER = ["XRF3", "XRF5", "XRF10", "XRF15", "XRF20", "XRF32", "XRF45", "XRF64", "XRF95", "XRF125", "XRF155", "XRF185", "XRF215", "XRF255"]
 
 def get_best_match_column(df, names):
@@ -52,7 +52,6 @@ def process_data(df, q_col, h_col, k_col):
             temp_df[col] = pd.to_numeric(temp_df[col])
     return calculate_efficiency(temp_df, q_col, h_col, k_col)
 
-# --- ★★★★★ 분석 함수 수정 ★★★★★ ---
 def analyze_operating_point(df, models, target_q, target_h, m_col, q_col, h_col, k_col):
     if target_h <= 0: return pd.DataFrame()
     results = []
@@ -78,8 +77,6 @@ def analyze_operating_point(df, models, target_q, target_h, m_col, q_col, h_col,
             interp_eff = np.interp(target_q, model_df[q_col], model_df['Efficiency']) if 'Efficiency' in model_df.columns else np.nan
             results.append({"모델명": model, "요구 유량": target_q, "요구 양정": target_h, "예상 양정": f"{interp_h:.2f}", "예상 동력(kW)": f"{interp_kw:.2f}", "예상 효율(%)": f"{interp_eff:.2f}", "선정 가능": "✅"})
         else:
-            # 역산 로직 수정: np.interp를 위해 y축(h_col)을 오름차순으로 만들어야 함
-            # 일반적인 펌프 곡선은 Q가 증가하면 H가 감소하므로, H와 Q 배열을 모두 뒤집으면 H가 오름차순이 됨
             h_values_rev = model_df[h_col].values[::-1]
             q_values_rev = model_df[q_col].values[::-1]
 
@@ -114,7 +111,6 @@ def analyze_fire_pump_point(df, models, target_q, target_h, m_col, q_col, h_col,
                 results.append({"모델명": model, "정격 예상 양정": f"{interp_h_rated:.2f}", "체절 양정 (≤{1.4*target_h:.2f})": f"{h_churn:.2f}", "최대운전 양정 (≥{0.65*target_h:.2f})": f"{interp_h_overload:.2f}", "예상 동력(kW)": f"{interp_kw:.2f}", "선정 가능": "✅"})
                 continue
 
-        # 역산 로직 수정
         h_values_rev = model_df[h_col].values[::-1]
         q_values_rev = model_df[q_col].values[::-1]
 
@@ -135,7 +131,6 @@ def analyze_fire_pump_point(df, models, target_q, target_h, m_col, q_col, h_col,
     
     return pd.DataFrame(results)
 
-# ... (이하 모든 함수는 이전 버전과 동일합니다) ...
 def render_filters(df, mcol, prefix):
     if df is None or df.empty or mcol is None or 'Series' not in df.columns:
         st.warning("필터링할 데이터가 없습니다.")
@@ -176,6 +171,9 @@ def render_chart(fig, key):
     fig.update_layout(dragmode='pan', xaxis=dict(fixedrange=False), yaxis=dict(fixedrange=False), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
     st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displaylogo': False}, key=key)
 
+# ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+# ★★★ 분석 함수 수정 (시험 데이터 부족 시 에러 방지) ★★★
+# ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 def perform_validation_analysis(df_r, df_d, m_r, m_d, q_r, q_d, y_r_col, y_d_col, test_id_col, models_to_validate, analysis_type):
     all_results = {}
     for model in models_to_validate:
@@ -205,7 +203,8 @@ def perform_validation_analysis(df_r, df_d, m_r, m_d, q_r, q_d, y_r_col, y_d_col
                 model_summary.append({
                     "모델명": model, "검증 유량(Q)": q, base_col_name: ref_y[i], 
                     "시험 횟수(n)": n, mean_col_name: np.nan, "표준편차": np.nan, 
-                    "95% CI 하한": np.nan, "95% CI 상한": np.nan, "유효성": "판단불가"
+                    "95% CI 하한": np.nan, "95% CI 상한": np.nan, "유효성": "판단불가",
+                    "_original_q": q  # <-- 이 부분이 누락되어 에러 발생, 수정 완료
                 })
                 continue
             
