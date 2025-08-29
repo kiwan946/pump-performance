@@ -108,7 +108,7 @@ def analyze_fire_pump_point(df, models, target_q, target_h, m_col, q_col, h_col,
             cond2_ok = (not np.isnan(interp_h_overload)) and (interp_h_overload >= (0.65 * target_h))
             if cond1_ok and cond2_ok:
                 interp_kw = np.interp(target_q, model_df[q_col], model_df[k_col]) if k_col and k_col in model_df.columns else np.nan
-                results.append({"모델명": model, "정격 예상 양정": f"{interp_h_rated:.2f}", "체절 양정 (≤{1.4*target_h})": f"{h_churn:.2f}", "최대운전 양정 (≥{0.65*target_h})": f"{interp_h_overload:.2f}", "예상 동력(kW)": f"{interp_kw:.2f}", "선정 가능": "✅"})
+                results.append({"모델명": model, "정격 예상 양정": f"{interp_h_rated:.2f}", "체절 양정 (≤{1.4*target_h:.2f})": f"{h_churn:.2f}", "최대운전 양정 (≥{0.65*target_h:.2f})": f"{interp_h_overload:.2f}", "예상 동력(kW)": f"{interp_kw:.2f}", "선정 가능": "✅"})
                 continue
 
         h_values_rev = model_df[h_col].values[::-1]
@@ -127,7 +127,7 @@ def analyze_fire_pump_point(df, models, target_q, target_h, m_col, q_col, h_col,
                     correction_pct = (1 - (q_required / target_q)) * 100
                     status_text = f"유량 {correction_pct:.1f}% 보정 전제 사용 가능"
                     interp_kw_corr = np.interp(q_required, model_df[q_col], model_df[k_col]) if k_col and k_col in model_df.columns else np.nan
-                    results.append({"모델명": model, "정격 예상 양정": f"{target_h:.2f} (at Q={q_required:.2f})", "체절 양정 (≤{1.4*target_h:.2f})": f"{h_churn:.2f}", "최대운전 양정 (≥{0.65*target_h:})": f"{interp_h_overload_corr:.2f}", "예상 동력(kW)": f"{interp_kw_corr:.2f}", "선정 가능": status_text})
+                    results.append({"모델명": model, "정격 예상 양정": f"{target_h:.2f} (at Q={q_required:.2f})", "체절 양정 (≤{1.4*target_h:.2f})": f"{h_churn:.2f}", "최대운전 양정 (≥{0.65*target_h:.2f})": f"{interp_h_overload_corr:.2f}", "예상 동력(kW)": f"{interp_kw_corr:.2f}", "선정 가능": status_text})
     
     return pd.DataFrame(results)
 
