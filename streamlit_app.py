@@ -312,15 +312,25 @@ if uploaded_file:
             with st.expander("운전점 분석 (Operating Point Analysis)"):
                 analysis_mode = st.radio("분석 모드", ["기계", "소방"], key="analysis_mode", horizontal=True)
                 op_col1, op_col2 = st.columns(2)
+
+                # ★★★★★★★★★★★★★★★★★★★ 최종 수정 부분 ★★★★★★★★★★★★★★★★★★★
                 with op_col1:
-                    # ★★★★★★★★★★★★★★★★★★★ 재수정된 부분 ★★★★★★★★★★★★★★★★★★★
-                    # format 인자를 삭제하여 자유로운 키보드 입력을 가능하게 합니다.
-                    target_q = st.number_input("목표 유량 (Q)", value=0.0, step=1.0)
-                with op_col2:
-                    # ★★★★★★★★★★★★★★★★★★★ 재수정된 부분 ★★★★★★★★★★★★★★★★★★★
-                    # format 인자를 삭제하여 자유로운 키보드 입력을 가능하게 합니다.
-                    target_h = st.number_input("목표 양정 (H)", value=0.0, step=1.0)
+                    q_input_str = st.text_input("목표 유량 (Q)", value="0.0")
+                    try:
+                        target_q = float(q_input_str)
+                    except ValueError:
+                        target_q = 0.0
+                        st.warning("유량에 유효한 숫자를 입력해주세요.", icon="⚠️")
                 
+                with op_col2:
+                    h_input_str = st.text_input("목표 양정 (H)", value="0.0")
+                    try:
+                        target_h = float(h_input_str)
+                    except ValueError:
+                        target_h = 0.0
+                        st.warning("양정에 유효한 숫자를 입력해주세요.", icon="⚠️")
+                # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+
                 if analysis_mode == "소방": st.info("소방 펌프 성능 기준 3점을 자동으로 분석합니다.")
                 if st.button("운전점 분석 실행"):
                     if not models: st.warning("먼저 분석할 시리즈나 모델을 선택해주세요.")
