@@ -171,9 +171,6 @@ def render_chart(fig, key):
     fig.update_layout(dragmode='pan', xaxis=dict(fixedrange=False), yaxis=dict(fixedrange=False), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
     st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displaylogo': False}, key=key)
 
-# ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-# ★★★ 분석 함수 수정 (시험 데이터 부족 시 에러 방지) ★★★
-# ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 def perform_validation_analysis(df_r, df_d, m_r, m_d, q_r, q_d, y_r_col, y_d_col, test_id_col, models_to_validate, analysis_type):
     all_results = {}
     for model in models_to_validate:
@@ -204,7 +201,7 @@ def perform_validation_analysis(df_r, df_d, m_r, m_d, q_r, q_d, y_r_col, y_d_col
                     "모델명": model, "검증 유량(Q)": q, base_col_name: ref_y[i], 
                     "시험 횟수(n)": n, mean_col_name: np.nan, "표준편차": np.nan, 
                     "95% CI 하한": np.nan, "95% CI 상한": np.nan, "유효성": "판단불가",
-                    "_original_q": q  # <-- 이 부분이 누락되어 에러 발생, 수정 완료
+                    "_original_q": q
                 })
                 continue
             
@@ -284,7 +281,6 @@ def display_validation_output(model, validation_data, analysis_type, df_r, df_d,
             st.markdown("---")
 
 # --- 메인 애플리케이션 로직 ---
-# ... (이하 로직은 이전 버전과 동일)
 uploaded_file = st.file_uploader("Excel 파일 업로드 (.xlsx 또는 .xlsm)", type=["xlsx", "xlsm"])
 if uploaded_file:
     m_r, df_r_orig = load_sheet(uploaded_file, "reference data"); m_c, df_c_orig = load_sheet(uploaded_file, "catalog data"); m_d, df_d_orig = load_sheet(uploaded_file, "deviation data")
@@ -316,8 +312,11 @@ if uploaded_file:
             with st.expander("운전점 분석 (Operating Point Analysis)"):
                 analysis_mode = st.radio("분석 모드", ["기계", "소방"], key="analysis_mode", horizontal=True)
                 op_col1, op_col2 = st.columns(2)
-                with op_col1: target_q = st.number_input("목표 유량 (Q)", value=0.0, format="%.2f")
-                with op_col2: target_h = st.number_input("목표 양정 (H)", value=0.0, format="%.2f")
+                with op_col1:
+                    target_q = st.number_input("요구 유량(Q) (m3/min)", value=0.0, format="%.2f", step=1.0)
+                with op_col2:
+                    target_h = st.number_input("요구 양정(H) (m)", value=0.0, format="%.2f", step=1.0)
+                
                 if analysis_mode == "소방": st.info("소방 펌프 성능 기준 3점을 자동으로 분석합니다.")
                 if st.button("운전점 분석 실행"):
                     if not models: st.warning("먼저 분석할 시리즈나 모델을 선택해주세요.")
