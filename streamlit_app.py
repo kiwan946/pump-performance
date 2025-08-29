@@ -313,9 +313,13 @@ if uploaded_file:
                 analysis_mode = st.radio("분석 모드", ["기계", "소방"], key="analysis_mode", horizontal=True)
                 op_col1, op_col2 = st.columns(2)
                 with op_col1:
-                    target_q = st.number_input("요구 유량(Q) (m3/min)", value=0.0, format="%.2f", step=1.0)
+                    # ★★★★★★★★★★★★★★★★★★★ 재수정된 부분 ★★★★★★★★★★★★★★★★★★★
+                    # format 인자를 삭제하여 자유로운 키보드 입력을 가능하게 합니다.
+                    target_q = st.number_input("목표 유량 (Q)", value=0.0, step=1.0)
                 with op_col2:
-                    target_h = st.number_input("요구 양정(H) (m)", value=0.0, format="%.2f", step=1.0)
+                    # ★★★★★★★★★★★★★★★★★★★ 재수정된 부분 ★★★★★★★★★★★★★★★★★★★
+                    # format 인자를 삭제하여 자유로운 키보드 입력을 가능하게 합니다.
+                    target_h = st.number_input("목표 양정 (H)", value=0.0, step=1.0)
                 
                 if analysis_mode == "소방": st.info("소방 펌프 성능 기준 3점을 자동으로 분석합니다.")
                 if st.button("운전점 분석 실행"):
