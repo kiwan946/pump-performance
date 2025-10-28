@@ -317,7 +317,6 @@ if uploaded_file:
                 analysis_mode = st.radio("분석 모드", ["기계", "소방"], key="analysis_mode", horizontal=True)
                 op_col1, op_col2 = st.columns(2)
 
-                # --- 기존 단일 운전점 분석 로직 (단위 명시) ---
                 with op_col1:
                     q_input_str = st.text_input("목표 유량 (Q, m³/min)", value="0.0")
                     try:
@@ -333,7 +332,6 @@ if uploaded_file:
                     except ValueError:
                         target_h = 0.0
                         st.warning("양정에 유효한 숫자를 입력해주세요.", icon="⚠️")
-                # --- (수정 끝) ---
 
                 if analysis_mode == "소방": st.info("소방 펌프 성능 기준 3점(정격, 체절, 최대)을 자동으로 분석합니다.")
                 if st.button("모델 검색 실행"):
@@ -349,116 +347,103 @@ if uploaded_file:
                 # ★★★★★★★★★★★★★★★★★★★ 신규 추가 기능 (배치 분석) ★★★★★★★★★★★★★★★★★★★
                 st.markdown("---")
                 st.markdown("#### 📥 모델별 개별 운전점 검토 (Batch)")
-                st.info("아래 형식으로 데이터를 붙여넣으세요 (구분자: /, 탭, 콤마)\n`모델명 / 유량(m³/min) / 양정(m)`")
                 
-                batch_input_text = st.text_area("데이터 붙여넣기", height=150, 
-                                                placeholder="XRF5-16 / 0.06 / 35\nXRF185-2-2D / 2.56 / 70\nXRF95-2 / 1.6 / 50")
+                # [수정] 텍스트 입력 대신 data_editor를 바로 사용 (엑셀 붙여넣기 지원)
+                st.info("엑셀에서 '모델명 | 유량(m³/min) | 양정(m)' 3개 열을 복사하여 아래 표에 붙여넣으세요.\n행 추가 버튼을 눌러 수동으로 입력할 수도 있습니다.")
 
-                if st.button("📋 붙여넣은 데이터 불러오기"):
-                    parsed_data = []
-                    lines = batch_input_text.strip().split('\n')
-                    for line in lines:
-                        line = line.strip()
-                        if not line: continue
-                        
-                        parts = []
-                        if '/' in line: parts = [p.strip() for p in line.split('/')]
-                        elif '\t' in line: parts = [p.strip() for p in line.split('\t')]
-                        elif ',' in line: parts = [p.strip() for p in line.split(',')]
-                        else: parts = [p.strip() for p in line.split(maxsplit=2)] # 공백 기준 (모델명에 공백이 있을 수 있으므로 maxsplit=2)
-
-                        if len(parts) >= 3:
-                            try:
-                                model_name = parts[0]
-                                q_val = float(parts[1])
-                                h_val = float(parts[2])
-                                parsed_data.append({
-                                    "모델명": model_name,
-                                    "요구 유량 (Q)": q_val,
-                                    "요구 양정 (H)": h_val,
-                                    "분석 모드": "기계" # 기본값
-                                })
-                            except (ValueError, IndexError):
-                                st.warning(f"다음 라인을 처리할 수 없습니다 (숫자 변환 오류): '{line}'", icon="⚠️")
-                                continue
-                        else:
-                             st.warning(f"다음 라인을 처리할 수 없습니다 (형식 오류, 3개 항목 필요): '{line}'", icon="⚠️")
-                    
-                    if parsed_data:
-                        st.session_state.batch_df = pd.DataFrame(parsed_data)
-                        if 'batch_results_df' in st.session_state:
-                            del st.session_state.batch_results_df # 이전 결과 초기화
-                    else:
-                        st.error("유효한 데이터를 불러오지 못했습니다.")
-                        if 'batch_df' in st.session_state:
-                            del st.session_state.batch_df # 실패 시 기존 데이터도 초기화
+                # 세션 상태에 batch_df가 없으면 예시 데이터로 초기화
+                if 'batch_df' not in st.session_state:
+                    st.session_state.batch_df = pd.DataFrame(
+                        [{"모델명": "XRF5-16", "요구 유량 (Q)": 0.06, "요구 양정 (H)": 35.0, "분석 모드": "기계"}],
+                        columns=["모델명", "요구 유량 (Q)", "요구 양정 (H)", "분석 모드"]
+                    )
+                
+                st.markdown("##### 1. 검토할 데이터 입력 (붙여넣기/수정)")
+                edited_df = st.data_editor(
+                    st.session_state.batch_df,
+                    column_config={
+                        "모델명": st.column_config.TextColumn("모델명", width="medium"),
+                        "요구 유량 (Q)": st.column_config.NumberColumn("요구 유량 (Q, m³/min)", format="%.3f", width="small"),
+                        "요구 양정 (H)": st.column_config.NumberColumn("요구 양정 (H, m)", format="%.2f", width="small"),
+                        "분석 모드": st.column_config.SelectboxColumn(
+                            "분석 모드",
+                            options=["기계", "소방"],
+                            required=True,
+                            width="small"
+                        )
+                    },
+                    use_container_width=True,
+                    num_rows="dynamic", # 행 추가/삭제/붙여넣기 허용
+                    key="batch_editor"
+                )
+                
+                # 편집된 내용을 즉시 세션 상태에 저장
+                st.session_state.batch_df = edited_df
 
                 # --- (데이터 에디터 및 분석 실행) ---
-                if 'batch_df' in st.session_state and not st.session_state.batch_df.empty:
-                    st.markdown("##### 1. 분석 모드 선택 및 데이터 수정")
-                    edited_df = st.data_editor(
-                        st.session_state.batch_df,
-                        column_config={
-                            "모델명": st.column_config.TextColumn("모델명", width="medium"),
-                            "요구 유량 (Q)": st.column_config.NumberColumn("요구 유량 (Q, m³/min)", format="%.3f", width="small"),
-                            "요구 양정 (H)": st.column_config.NumberColumn("요구 양정 (H, m)", format="%.2f", width="small"),
-                            "분석 모드": st.column_config.SelectboxColumn(
-                                "분석 모드",
-                                options=["기계", "소방"],
-                                required=True,
-                                width="small"
-                            )
-                        },
-                        use_container_width=True,
-                        num_rows="dynamic", # 행 추가/삭제/수정 가능
-                        key="batch_editor"
-                    )
-                    st.session_state.batch_df = edited_df # 변경 사항 저장
-
-                    st.markdown("##### 2. 분석 실행")
-                    if st.button("🚀 개별 모델 검토 실행"):
-                        results = []
-                        if df_r.empty:
-                            st.error("Reference data (df_r)가 로드되지 않았습니다. 파일 업로드를 확인하세요.")
-                        else:
-                            with st.spinner("개별 모델 검토 중..."):
-                                for _, row in edited_df.iterrows():
-                                    model = row['모델명']
-                                    q = row['요구 유량 (Q)']
-                                    h = row['요구 양정 (H)']
-                                    mode = row['분석 모드']
-                                    
-                                    if model not in df_r[m_r].unique():
-                                        results.append({
-                                            '모델명': model, '요구 유량 (Q)': q, '요구 양정 (H)': h, '분석 모드': mode,
-                                            '결과': '❌ 모델 없음',
-                                            '상세': 'Reference 데이터에 해당 모델이 없습니다.'
-                                        })
-                                        continue
-
-                                    if mode == "소방":
-                                        op_result = analyze_fire_pump_point(df_r, [model], q, h, m_r, q_col_total, h_col_total, k_col_total)
-                                    else: # "기계"
-                                        op_result = analyze_operating_point(df_r, [model], q, h, m_r, q_col_total, h_col_total, k_col_total)
-                                        
-                                    if not op_result.empty:
-                                        status = op_result.iloc[0]['선정 가능']
-                                        # "예상 효율(%)" 컬럼이 존재할 경우에만 상세 정보에 포함
-                                        eff_str = f" | 예상 효율: {op_result.iloc[0]['예상 효율(%)']}" if '예상 효율(%)' in op_result.columns else ""
-                                        details = f"예상 양정: {op_result.iloc[0]['예상 양정']} | 예상 동력: {op_result.iloc[0]['예상 동력(kW)']}{eff_str}"
-                                        results.append({
-                                            '모델명': model, '요구 유량 (Q)': q, '요구 양정 (H)': h, '분석 모드': mode,
-                                            '결과': status,
-                                            '상세': details
-                                        })
-                                    else:
-                                        results.append({
-                                            '모델명': model, '요구 유량 (Q)': q, '요구 양정 (H)': h, '분석 모드': mode,
-                                            '결과': '❌ 사용 불가',
-                                            '상세': '요구 성능을 만족하는 운전점을 찾을 수 없습니다.'
-                                        })
+                st.markdown("##### 2. 분석 실행")
+                if st.button("🚀 개별 모델 검토 실행"):
+                    results = []
+                    if df_r.empty:
+                        st.error("Reference data (df_r)가 로드되지 않았습니다. 파일 업로드를 확인하세요.")
+                    elif edited_df.empty:
+                        st.warning("검토할 데이터가 없습니다. 표에 데이터를 입력해주세요.")
+                    else:
+                        with st.spinner("개별 모델 검토 중..."):
+                            for _, row in edited_df.iterrows():
+                                model = row['모델명']
+                                q = row['요구 유량 (Q)']
+                                h = row['요구 양정 (H)']
+                                mode = row['분석 모드']
                                 
-                            st.session_state.batch_results_df = pd.DataFrame(results)
+                                # 모델명이 비어있으면 건너뛰기
+                                if not model or pd.isna(model):
+                                    continue
+                                
+                                if model not in df_r[m_r].unique():
+                                    results.append({
+                                        '모델명': model, '요구 유량 (Q)': q, '요구 양정 (H)': h, '분석 모드': mode,
+                                        '결과': '❌ 모델 없음',
+                                        '상세': 'Reference 데이터에 해당 모델이 없습니다.'
+                                    })
+                                    continue
+
+                                if mode == "소방":
+                                    op_result = analyze_fire_pump_point(df_r, [model], q, h, m_r, q_col_total, h_col_total, k_col_total)
+                                else: # "기계"
+                                    op_result = analyze_operating_point(df_r, [model], q, h, m_r, q_col_total, h_col_total, k_col_total)
+                                    
+                                if not op_result.empty:
+                                    status = op_result.iloc[0]['선정 가능']
+                                    
+                                    # [KeyError 수정] '소방' 모드와 '기계' 모드의 양정 컬럼명이 다름
+                                    head_col_name = '정격 예상 양정' if mode == "소방" else '예상 양정'
+                                    
+                                    # [KeyError 수정] '예상 효율(%)' 컬럼은 '기계' 모드에만 존재할 수 있음
+                                    eff_str = f" | 예상 효율: {op_result.iloc[0]['예상 효율(%)']}" if '예상 효율(%)' in op_result.columns else ""
+                                    
+                                    # [KeyError 수정] .get()을 사용하여 안전하게 컬럼 접근
+                                    head_val = op_result.iloc[0].get(head_col_name, 'N/A')
+                                    power_val = op_result.iloc[0].get('예상 동력(kW)', 'N/A')
+
+                                    details = f"예상 양정: {head_val} | 예상 동력: {power_val}{eff_str}"
+                                        
+                                    results.append({
+                                        '모델명': model, '요구 유량 (Q)': q, '요구 양정 (H)': h, '분석 모드': mode,
+                                        '결과': status,
+                                        '상세': details
+                                    })
+                                else:
+                                    results.append({
+                                        '모델명': model, '요구 유량 (Q)': q, '요구 양정 (H)': h, '분석 모드': mode,
+                                        '결과': '❌ 사용 불가',
+                                        '상세': '요구 성능을 만족하는 운전점을 찾을 수 없습니다.'
+                                    })
+                            
+                        st.session_state.batch_results_df = pd.DataFrame(results)
+                        if 'batch_results_df' not in st.session_state or st.session_state.batch_results_df.empty:
+                            st.info("분석 결과가 없습니다.")
+
 
                 # --- (배치 분석 결과 표시) ---
                 if 'batch_results_df' in st.session_state and not st.session_state.batch_results_df.empty:
