@@ -9,7 +9,7 @@ from scipy.stats import t
 st.set_page_config(page_title="Dooch XRL(F) 성능 곡선 뷰어 v1.0", layout="wide")
 st.title("📊 Dooch XRL(F) 성능 곡선 뷰어 v1.0")
 
-# --- 유틸리티 및 기본 분석 함수들 (이전과 동일) ---
+# --- 유틸리티 및 기본 분석 함수들 ---
 SERIES_ORDER = ["XRF3", "XRF5", "XRF10", "XRF15", "XRF20", "XRF32", "XRF45", "XRF64", "XRF95", "XRF125", "XRF155", "XRF185", "XRF215", "XRF255"]
 
 def get_best_match_column(df, names):
@@ -23,6 +23,7 @@ def get_best_match_column(df, names):
 def calculate_efficiency(df, q_col, h_col, k_col):
     if not all(col and col in df.columns for col in [q_col, h_col, k_col]): return df
     df_copy = df.copy()
+    # Q(m³/min), H(m) 기준 축동력(kW) 계산 상수 0.163
     hydraulic_power = 0.163 * df_copy[q_col] * df_copy[h_col]
     shaft_power = df_copy[k_col]
     df_copy['Efficiency'] = np.where(shaft_power > 0, (hydraulic_power / shaft_power) * 100, 0)
@@ -305,17 +306,20 @@ if uploaded_file:
         df_r = process_data(df_r_orig, q_col_total, h_col_total, k_col_total); df_c = process_data(df_c_orig, q_c, h_c, k_c); df_d = process_data(df_d_orig, q_d, h_d, k_d)
         tab_list = ["Total", "Reference", "Catalog", "Deviation", "Validation"]; tabs = st.tabs(tab_list)
         
+        # ★★★★★★★★★★★★★★★★★★★ 'Total' 탭 수정됨 ★★★★★★★★★★★★★★★★★★★
         with tabs[0]:
             st.subheader("📊 Total - 통합 곡선 및 운전점 분석")
             df_f = render_filters(df_r, m_r, "total")
             models = df_f[m_r].unique().tolist() if m_r and not df_f.empty else []
+            
             with st.expander("운전점 분석 (Operating Point Analysis)"):
+                st.markdown("#### 🎯 단일 운전점 기준 모델 검색")
                 analysis_mode = st.radio("분석 모드", ["기계", "소방"], key="analysis_mode", horizontal=True)
                 op_col1, op_col2 = st.columns(2)
 
-                # ★★★★★★★★★★★★★★★★★★★ 최종 수정 부분 ★★★★★★★★★★★★★★★★★★★
+                # --- 기존 단일 운전점 분석 로직 (단위 명시) ---
                 with op_col1:
-                    q_input_str = st.text_input("목표 유량 (Q)", value="0.0")
+                    q_input_str = st.text_input("목표 유량 (Q, m³/min)", value="0.0")
                     try:
                         target_q = float(q_input_str)
                     except ValueError:
@@ -323,28 +327,153 @@ if uploaded_file:
                         st.warning("유량에 유효한 숫자를 입력해주세요.", icon="⚠️")
                 
                 with op_col2:
-                    h_input_str = st.text_input("목표 양정 (H)", value="0.0")
+                    h_input_str = st.text_input("목표 양정 (H, m)", value="0.0")
                     try:
                         target_h = float(h_input_str)
                     except ValueError:
                         target_h = 0.0
                         st.warning("양정에 유효한 숫자를 입력해주세요.", icon="⚠️")
-                # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+                # --- (수정 끝) ---
 
-                if analysis_mode == "소방": st.info("소방 펌프 성능 기준 3점을 자동으로 분석합니다.")
-                if st.button("운전점 분석 실행"):
+                if analysis_mode == "소방": st.info("소방 펌프 성능 기준 3점(정격, 체절, 최대)을 자동으로 분석합니다.")
+                if st.button("모델 검색 실행"):
                     if not models: st.warning("먼저 분석할 시리즈나 모델을 선택해주세요.")
                     else:
                         with st.spinner("선택된 모델들을 분석 중입니다..."):
                             if analysis_mode == "소방": op_results_df = analyze_fire_pump_point(df_r, models, target_q, target_h, m_r, q_col_total, h_col_total, k_col_total)
                             else: op_results_df = analyze_operating_point(df_r, models, target_q, target_h, m_r, q_col_total, h_col_total, k_col_total)
+                            
                             if not op_results_df.empty: st.success(f"총 {len(op_results_df)}개의 모델을 찾았습니다."); st.dataframe(op_results_df, use_container_width=True)
                             else: st.info("요구 성능을 만족하는 모델을 찾지 못했습니다.")
+
+                # ★★★★★★★★★★★★★★★★★★★ 신규 추가 기능 (배치 분석) ★★★★★★★★★★★★★★★★★★★
+                st.markdown("---")
+                st.markdown("#### 📥 모델별 개별 운전점 검토 (Batch)")
+                st.info("아래 형식으로 데이터를 붙여넣으세요 (구분자: /, 탭, 콤마)\n`모델명 / 유량(m³/min) / 양정(m)`")
+                
+                batch_input_text = st.text_area("데이터 붙여넣기", height=150, 
+                                                placeholder="XRF5-16 / 0.06 / 35\nXRF185-2-2D / 2.56 / 70\nXRF95-2 / 1.6 / 50")
+
+                if st.button("📋 붙여넣은 데이터 불러오기"):
+                    parsed_data = []
+                    lines = batch_input_text.strip().split('\n')
+                    for line in lines:
+                        line = line.strip()
+                        if not line: continue
+                        
+                        parts = []
+                        if '/' in line: parts = [p.strip() for p in line.split('/')]
+                        elif '\t' in line: parts = [p.strip() for p in line.split('\t')]
+                        elif ',' in line: parts = [p.strip() for p in line.split(',')]
+                        else: parts = [p.strip() for p in line.split(maxsplit=2)] # 공백 기준 (모델명에 공백이 있을 수 있으므로 maxsplit=2)
+
+                        if len(parts) >= 3:
+                            try:
+                                model_name = parts[0]
+                                q_val = float(parts[1])
+                                h_val = float(parts[2])
+                                parsed_data.append({
+                                    "모델명": model_name,
+                                    "요구 유량 (Q)": q_val,
+                                    "요구 양정 (H)": h_val,
+                                    "분석 모드": "기계" # 기본값
+                                })
+                            except (ValueError, IndexError):
+                                st.warning(f"다음 라인을 처리할 수 없습니다 (숫자 변환 오류): '{line}'", icon="⚠️")
+                                continue
+                        else:
+                             st.warning(f"다음 라인을 처리할 수 없습니다 (형식 오류, 3개 항목 필요): '{line}'", icon="⚠️")
+                    
+                    if parsed_data:
+                        st.session_state.batch_df = pd.DataFrame(parsed_data)
+                        if 'batch_results_df' in st.session_state:
+                            del st.session_state.batch_results_df # 이전 결과 초기화
+                    else:
+                        st.error("유효한 데이터를 불러오지 못했습니다.")
+                        if 'batch_df' in st.session_state:
+                            del st.session_state.batch_df # 실패 시 기존 데이터도 초기화
+
+                # --- (데이터 에디터 및 분석 실행) ---
+                if 'batch_df' in st.session_state and not st.session_state.batch_df.empty:
+                    st.markdown("##### 1. 분석 모드 선택 및 데이터 수정")
+                    edited_df = st.data_editor(
+                        st.session_state.batch_df,
+                        column_config={
+                            "모델명": st.column_config.TextColumn("모델명", width="medium"),
+                            "요구 유량 (Q)": st.column_config.NumberColumn("요구 유량 (Q, m³/min)", format="%.3f", width="small"),
+                            "요구 양정 (H)": st.column_config.NumberColumn("요구 양정 (H, m)", format="%.2f", width="small"),
+                            "분석 모드": st.column_config.SelectboxColumn(
+                                "분석 모드",
+                                options=["기계", "소방"],
+                                required=True,
+                                width="small"
+                            )
+                        },
+                        use_container_width=True,
+                        num_rows="dynamic", # 행 추가/삭제/수정 가능
+                        key="batch_editor"
+                    )
+                    st.session_state.batch_df = edited_df # 변경 사항 저장
+
+                    st.markdown("##### 2. 분석 실행")
+                    if st.button("🚀 개별 모델 검토 실행"):
+                        results = []
+                        if df_r.empty:
+                            st.error("Reference data (df_r)가 로드되지 않았습니다. 파일 업로드를 확인하세요.")
+                        else:
+                            with st.spinner("개별 모델 검토 중..."):
+                                for _, row in edited_df.iterrows():
+                                    model = row['모델명']
+                                    q = row['요구 유량 (Q)']
+                                    h = row['요구 양정 (H)']
+                                    mode = row['분석 모드']
+                                    
+                                    if model not in df_r[m_r].unique():
+                                        results.append({
+                                            '모델명': model, '요구 유량 (Q)': q, '요구 양정 (H)': h, '분석 모드': mode,
+                                            '결과': '❌ 모델 없음',
+                                            '상세': 'Reference 데이터에 해당 모델이 없습니다.'
+                                        })
+                                        continue
+
+                                    if mode == "소방":
+                                        op_result = analyze_fire_pump_point(df_r, [model], q, h, m_r, q_col_total, h_col_total, k_col_total)
+                                    else: # "기계"
+                                        op_result = analyze_operating_point(df_r, [model], q, h, m_r, q_col_total, h_col_total, k_col_total)
+                                        
+                                    if not op_result.empty:
+                                        status = op_result.iloc[0]['선정 가능']
+                                        # "예상 효율(%)" 컬럼이 존재할 경우에만 상세 정보에 포함
+                                        eff_str = f" | 예상 효율: {op_result.iloc[0]['예상 효율(%)']}" if '예상 효율(%)' in op_result.columns else ""
+                                        details = f"예상 양정: {op_result.iloc[0]['예상 양정']} | 예상 동력: {op_result.iloc[0]['예상 동력(kW)']}{eff_str}"
+                                        results.append({
+                                            '모델명': model, '요구 유량 (Q)': q, '요구 양정 (H)': h, '분석 모드': mode,
+                                            '결과': status,
+                                            '상세': details
+                                        })
+                                    else:
+                                        results.append({
+                                            '모델명': model, '요구 유량 (Q)': q, '요구 양정 (H)': h, '분석 모드': mode,
+                                            '결과': '❌ 사용 불가',
+                                            '상세': '요구 성능을 만족하는 운전점을 찾을 수 없습니다.'
+                                        })
+                                
+                            st.session_state.batch_results_df = pd.DataFrame(results)
+
+                # --- (배치 분석 결과 표시) ---
+                if 'batch_results_df' in st.session_state and not st.session_state.batch_results_df.empty:
+                    st.markdown("##### 3. 분석 결과")
+                    st.dataframe(st.session_state.batch_results_df.set_index('모델명'), use_container_width=True)
+
+                # ★★★★★★★★★★★★★★★★★★★ (신규 기능 끝) ★★★★★★★★★★★★★★★★★★★
+
+            # --- 기존 차트 로직 (유지) ---
             with st.expander("차트 보조선 추가"):
                 g_col1, g_col2, g_col3 = st.columns(3)
                 with g_col1: h_guide_h, v_guide_h = st.number_input("Q-H 수평선", value=0.0), st.number_input("Q-H 수직선", value=0.0)
                 with g_col2: h_guide_k, v_guide_k = st.number_input("Q-kW 수평선", value=0.0), st.number_input("Q-kW 수직선", value=0.0)
                 with g_col3: h_guide_e, v_guide_e = st.number_input("Q-Eff 수평선", value=0.0), st.number_input("Q-Eff 수직선", value=0.0)
+            
             st.markdown("---")
             ref_show = st.checkbox("Reference 표시", value=True); cat_show = st.checkbox("Catalog 표시"); dev_show = st.checkbox("Deviation 표시")
             st.markdown(f"#### Q-H (유량-{h_col_total})")
@@ -352,22 +481,41 @@ if uploaded_file:
             if ref_show and not df_f.empty: add_traces(fig_h, df_f, m_r, q_col_total, h_col_total, models, 'lines+markers'); add_bep_markers(fig_h, df_f, m_r, q_col_total, h_col_total, models)
             if cat_show and not df_c.empty: add_traces(fig_h, df_c, m_c, q_c, h_c, models, 'lines+markers', line_style=dict(dash='dot'))
             if dev_show and not df_d.empty: add_traces(fig_h, df_d, m_d, q_d, h_d, models, 'markers')
+            
+            # 단일 운전점 표시
             if 'target_q' in locals() and target_q > 0 and target_h > 0:
-                fig_h.add_trace(go.Scatter(x=[target_q], y=[target_h], mode='markers', marker=dict(symbol='cross', size=15, color='magenta'), name='정격 운전점'))
+                fig_h.add_trace(go.Scatter(x=[target_q], y=[target_h], mode='markers', marker=dict(symbol='cross', size=15, color='magenta'), name='정격 운전점 (단일)'))
                 if analysis_mode == "소방":
                     churn_h_limit = 1.4 * target_h; fig_h.add_trace(go.Scatter(x=[0], y=[churn_h_limit], mode='markers', marker=dict(symbol='x', size=12, color='red'), name=f'체절점 상한'))
                     overload_q, overload_h_limit = 1.5 * target_q, 0.65 * target_h; fig_h.add_trace(go.Scatter(x=[overload_q], y=[overload_h_limit], mode='markers', marker=dict(symbol='diamond-open', size=12, color='blue'), name=f'최대점 하한'))
+            
+            # (배치 분석 결과를 차트에 점으로 표시)
+            if 'batch_results_df' in st.session_state and not st.session_state.batch_results_df.empty:
+                batch_plot_df = st.session_state.batch_results_df
+                fig_h.add_trace(go.Scatter(
+                    x=batch_plot_df['요구 유량 (Q)'], 
+                    y=batch_plot_df['요구 양정 (H)'],
+                    mode='markers+text',
+                    marker=dict(symbol='star', size=12, color='orange'),
+                    text=batch_plot_df['모델명'] + " (" + batch_plot_df['결과'] + ")",
+                    textposition="top right",
+                    name='개별 검토 운전점'
+                ))
+
             add_guide_lines(fig_h, h_guide_h, v_guide_h); render_chart(fig_h, "total_qh")
+            
             st.markdown("#### Q-kW (유량-축동력)"); fig_k = go.Figure()
             if ref_show and not df_f.empty: add_traces(fig_k, df_f, m_r, q_col_total, k_col_total, models, 'lines+markers')
             if cat_show and not df_c.empty: add_traces(fig_k, df_c, m_c, q_c, k_c, models, 'lines+markers', line_style=dict(dash='dot'))
             if dev_show and not df_d.empty: add_traces(fig_k, df_d, m_d, q_d, k_d, models, 'markers')
             add_guide_lines(fig_k, h_guide_k, v_guide_k); render_chart(fig_k, "total_qk")
+            
             st.markdown("#### Q-Efficiency (유량-효율)"); fig_e = go.Figure()
             if ref_show and not df_f.empty: add_traces(fig_e, df_f, m_r, q_col_total, 'Efficiency', models, 'lines+markers'); add_bep_markers(fig_e, df_f, m_r, q_col_total, 'Efficiency', models)
             if cat_show and not df_c.empty: add_traces(fig_e, df_c, m_c, q_c, 'Efficiency', models, 'lines+markers', line_style=dict(dash='dot'))
             if dev_show and not df_d.empty: add_traces(fig_e, df_d, m_d, q_d, 'Efficiency', models, 'markers')
             add_guide_lines(fig_e, h_guide_e, v_guide_e); render_chart(fig_e, "total_qe")
+        # ★★★★★★★★★★★★★★★★★★★ 'Total' 탭 끝 ★★★★★★★★★★★★★★★★★★★
 
         for idx, sheet_name in enumerate(["Reference", "Catalog", "Deviation"]):
             with tabs[idx+1]:
